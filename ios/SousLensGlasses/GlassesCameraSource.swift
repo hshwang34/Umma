@@ -86,16 +86,15 @@ final class GlassesCameraSource: CameraSource, FramePreviewProviding {
             status = try await wearables.checkPermissionStatus(.camera)
         } catch {
             try await superseded(unless: token)
-            fail(.failed("Couldn’t check the glasses camera permission."))
-            throw CaptureError.failed("Couldn’t check the glasses camera permission.")
+            throw abortStart(.failed("Couldn’t check the glasses camera permission."),
+                             CaptureError.failed("Couldn’t check the glasses camera permission."))
         }
         try await superseded(unless: token)
         guard status == .granted else {
-            fail(.permissionDenied)
-            throw CaptureError.permissionDenied(
+            throw abortStart(.permissionDenied, CaptureError.permissionDenied(
                 permission: "Glasses camera",
                 explainer: "Allow the glasses camera in Settings → Glasses (it opens Meta AI)."
-            )
+            ))
         }
 
         let session: DeviceSession
@@ -104,9 +103,7 @@ final class GlassesCameraSource: CameraSource, FramePreviewProviding {
             session = try wearables.createSession(deviceSelector: selector)
         } catch {
             logger.error("createSession: \(String(describing: error), privacy: .public)")
-            let issue = GlassesStateMapping.issue(error) ?? .failed("The glasses session didn’t start.")
-            fail(issue)
-            throw CaptureError.unavailable(.glasses, reason: issue.statusText)
+            throw abortStart(GlassesStateMapping.issue(error) ?? .failed("The glasses session didn’t start."))
         }
         self.session = session
         observe(session)
@@ -114,23 +111,24 @@ final class GlassesCameraSource: CameraSource, FramePreviewProviding {
             try session.start()
         } catch {
             logger.error("session.start: \(String(describing: error), privacy: .public)")
-            let issue = GlassesStateMapping.issue(error) ?? .failed("The glasses session didn’t start.")
-            fail(issue)
-            throw CaptureError.unavailable(.glasses, reason: issue.statusText)
+            throw abortStart(GlassesStateMapping.issue(error) ?? .failed("The glasses session didn’t start."))
         }
         try await waitUntil(token: token) { $0.sessionState == .started }
 
         let camera: Camera
         do {
             guard let added = try session.addCamera(config: streamConfiguration) else {
-                fail(.failed("The glasses camera isn’t available."))
-                throw CaptureError.unavailable(.glasses, reason: "The glasses camera isn’t available.")
+                throw abortStart(.failed("The glasses camera isn’t available."))
             }
             camera = added
+        } catch let error as CaptureError {
+            throw error
         } catch let error as DeviceSessionError {
-            let issue = GlassesStateMapping.issue(error) ?? .failed("The glasses camera isn’t available.")
-            fail(issue)
-            throw CaptureError.unavailable(.glasses, reason: issue.statusText)
+            logger.error("addCamera: \(String(describing: error), privacy: .public)")
+            throw abortStart(GlassesStateMapping.issue(error) ?? .failed("The glasses camera isn’t available."))
+        } catch {
+            logger.error("addCamera: \(String(describing: error), privacy: .public)")
+            throw abortStart(.failed("The glasses camera isn’t available."))
         }
         self.camera = camera
         observe(camera.stream)
@@ -172,21 +170,27 @@ final class GlassesCameraSource: CameraSource, FramePreviewProviding {
         while true {
             try await superseded(unless: token)
             if let failure {
-                teardown(keepIssue: true)
-                throw CaptureError.unavailable(.glasses, reason: failure.statusText)
+                throw abortStart(failure)
             }
             if condition(self) { return }
             if sessionState == .stopped {
                 logger.error("session stopped while starting")
-                fail(.disconnected)
-                throw CaptureError.unavailable(.glasses, reason: GlassesIssue.disconnected.statusText)
+                throw abortStart(.disconnected)
             }
             if clock.now >= deadline {
-                fail(.timeout)
-                throw CaptureError.unavailable(.glasses, reason: GlassesIssue.timeout.statusText)
+                logger.error("glasses start timed out")
+                throw abortStart(.timeout)
             }
             try? await Task.sleep(for: .milliseconds(50))
         }
+    }
+
+    /// Every failed start reports its issue and tears itself down (camera, session, frames), so
+    /// nothing is left half-started whatever the caller does next.
+    private func abortStart(_ issue: GlassesIssue, _ error: CaptureError? = nil) -> CaptureError {
+        if failure != issue { fail(issue) }
+        teardown(keepIssue: true)
+        return error ?? CaptureError.unavailable(.glasses, reason: issue.statusText)
     }
 
     // MARK: - Listeners

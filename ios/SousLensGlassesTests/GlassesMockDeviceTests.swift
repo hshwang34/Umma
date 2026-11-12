@@ -213,10 +213,13 @@ final class GlassesMockDeviceTests: XCTestCase {
                 return "failed"
             }
         }
-        await Task.yield()
+        // Stop only once the start is parked mid-flight (session connecting, not yet streaming),
+        // so the gate really has to reject a start that resumes after the stop.
+        await waitUntil("start parked while connecting", timeout: 10) { camera.phase == .connecting }
+        XCTAssertFalse(camera.activeIndicator)
         await camera.stopPreview()
         let outcome = await start.value
-        XCTAssertEqual(outcome, "cancelled")
+        XCTAssertEqual(outcome, "cancelled", "the start that lost the race must give up")
         try? await Task.sleep(for: .seconds(2))
         XCTAssertFalse(camera.activeIndicator)
         XCTAssertNil(camera.previewFrame)

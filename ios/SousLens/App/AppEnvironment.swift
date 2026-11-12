@@ -80,7 +80,10 @@ final class AppEnvironment {
         self.speech = speech
         self.audio = audio
         self.glasses = glasses
-        self.audioRoute = audioRoute ?? AudioRouteMonitor(glassesBuild: glasses != nil)
+        self.audioRoute = audioRoute ?? AudioRouteMonitor(
+            glassesBuild: glasses != nil,
+            glassesDeviceName: { [weak glasses] in glasses?.snapshot.deviceName }
+        )
         cooking = CookingSessionStore(service: api, cache: sessionCache, owner: { [weak auth, weak serverSettings] in
             guard let user = auth?.user, let server = serverSettings?.effectiveBaseURLString, !server.isEmpty else { return nil }
             return SessionOwner(userId: user.id, server: server)

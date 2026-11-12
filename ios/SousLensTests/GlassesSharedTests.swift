@@ -195,6 +195,16 @@ final class HonestMicLabelTests: XCTestCase {
         XCTAssertFalse(AudioInputLabel.isGlassesMic([hfp], glassesBuild: false))
     }
 
+    func testLookalikeNamesAreNotGlasses() {
+        for name in ["Metal Headset", "Meta", "Metallica BT"] {
+            XCTAssertFalse(AudioInputLabel.isGlassesPortName(name, deviceName: nil), name)
+        }
+        XCTAssertTrue(AudioInputLabel.isGlassesPortName("Ray-Ban Meta 0A1B", deviceName: nil))
+        XCTAssertTrue(AudioInputLabel.isGlassesPortName("Oakley Meta HSTN", deviceName: nil))
+        XCTAssertFalse(AudioInputLabel.isGlassesPortName("Meta", deviceName: "Ray-Ban Meta 0A1B"),
+                       "AirPods renamed Meta aren't the connected glasses")
+    }
+
     func testA2DPOnlyOrNoInputIsTheIPhoneMic() {
         XCTAssertEqual(AudioInputLabel.label(for: [], glassesBuild: false), "iPhone microphone")
         XCTAssertEqual(AudioInputLabel.label(for: [AudioInputPort(type: .builtInMic, name: "iPhone Microphone")], glassesBuild: true),

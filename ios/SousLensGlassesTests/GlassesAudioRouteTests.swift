@@ -27,8 +27,29 @@ final class GlassesAudioRouteTests: XCTestCase {
     }
 
     func testOtherHFPHeadsetIsNamedHonestly() {
-        let airpods = AudioInputPort(type: .bluetoothHFP, name: "Jacob’s AirPods Pro")
-        XCTAssertEqual(AudioInputLabel.label(for: [airpods], glassesBuild: true), "Bluetooth microphone (Jacob’s AirPods Pro)")
+        let airpods = AudioInputPort(type: .bluetoothHFP, name: "AirPods Pro")
+        XCTAssertEqual(AudioInputLabel.label(for: [airpods], glassesBuild: true), "Bluetooth microphone (AirPods Pro)")
+    }
+
+    func testLookalikeHeadsetsNeverShowGlassesMic() {
+        for name in ["Metal Headset", "Meta", "Metallica BT", "Ray-Ban", "Oakley Sport"] {
+            let port = AudioInputPort(type: .bluetoothHFP, name: name)
+            XCTAssertFalse(AudioInputLabel.isGlassesMic([port], glassesBuild: true), name)
+            XCTAssertEqual(AudioInputLabel.label(for: [port], glassesBuild: true), "Bluetooth microphone (\(name))")
+        }
+    }
+
+    func testKnownDeviceNameMustMatchExactly() {
+        let device = "Simulated Ray-Ban Meta #1"
+        XCTAssertTrue(AudioInputLabel.isGlassesMic([AudioInputPort(type: .bluetoothHFP, name: device)],
+                                                   glassesBuild: true, glassesDeviceName: device))
+        // AirPods renamed "Meta", or another pair of Ray-Ban Meta, isn't the connected glasses.
+        XCTAssertFalse(AudioInputLabel.isGlassesMic([AudioInputPort(type: .bluetoothHFP, name: "Meta")],
+                                                    glassesBuild: true, glassesDeviceName: device))
+        XCTAssertFalse(AudioInputLabel.isGlassesMic([AudioInputPort(type: .bluetoothHFP, name: "Ray-Ban Meta 9Z")],
+                                                    glassesBuild: true, glassesDeviceName: device))
+        XCTAssertFalse(AudioInputLabel.isGlassesMic([AudioInputPort(type: .bluetoothA2DP, name: device)],
+                                                    glassesBuild: true, glassesDeviceName: device))
     }
 
     func testMonitorUpdatesOnRouteChange() async {

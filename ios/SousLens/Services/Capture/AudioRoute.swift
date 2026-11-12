@@ -9,19 +9,20 @@ struct AudioInputPort: Equatable, Sendable {
 }
 
 /// CLAUDE.md "honest device state": the microphone is named from the verified route only.
-/// "Glasses microphone" requires a Bluetooth HFP *input* whose name is a Meta glasses name, in the
-/// glasses build. An A2DP-only route (output, no input) can never produce it.
+/// "Glasses microphone" requires, in the glasses build, a Bluetooth HFP *input* that is the
+/// glasses: its port name equals the connected DAT device's name, or (no device name known) it
+/// carries a whole-word Meta glasses model name. An A2DP-only route (output, no input), any other
+/// headset ("Metal Headset", AirPods renamed "Meta") and the public build never produce it.
 enum AudioInputLabel {
     static let iPhone = "iPhone microphone"
     static let glasses = "Glasses microphone"
 
-    /// Port-name fragments of Ray-Ban / Oakley Meta glasses.
-    static let glassesNameHints = ["ray-ban", "rayban", "oakley", "meta"]
+    /// Whole-word Meta glasses model names, used only when no DAT device name is known.
+    static let glassesModelPattern = #"\b(ray-?ban meta|oakley meta)\b"#
 
-    static func label(for inputs: [AudioInputPort], glassesBuild: Bool) -> String {
+    static func label(for inputs: [AudioInputPort], glassesBuild: Bool, glassesDeviceName: String? = nil) -> String {
         if let hfp = inputs.first(where: { $0.type == .bluetoothHFP }) {
-            let lower = hfp.name.lowercased()
-            if glassesBuild, glassesNameHints.contains(where: lower.contains) {
+            if glassesBuild, isGlassesPortName(hfp.name, deviceName: glassesDeviceName) {
                 return glasses
             }
             return hfp.name.isEmpty ? "Bluetooth microphone" : "Bluetooth microphone (\(hfp.name))"
@@ -40,8 +41,18 @@ enum AudioInputLabel {
     }
 
     /// True only for a verified glasses HFP input.
-    static func isGlassesMic(_ inputs: [AudioInputPort], glassesBuild: Bool) -> Bool {
-        label(for: inputs, glassesBuild: glassesBuild) == glasses
+    static func isGlassesMic(_ inputs: [AudioInputPort], glassesBuild: Bool, glassesDeviceName: String? = nil) -> Bool {
+        label(for: inputs, glassesBuild: glassesBuild, glassesDeviceName: glassesDeviceName) == glasses
+    }
+
+    static func isGlassesPortName(_ portName: String, deviceName: String?) -> Bool {
+        let port = portName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !port.isEmpty else { return false }
+        if let deviceName = deviceName?.trimmingCharacters(in: .whitespacesAndNewlines), !deviceName.isEmpty {
+            // A DAT device is known: only its exact name counts.
+            return port.caseInsensitiveCompare(deviceName) == .orderedSame
+        }
+        return port.range(of: glassesModelPattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 }
 
@@ -54,13 +65,22 @@ final class AudioRouteMonitor {
     private let read: @MainActor () -> [AudioInputPort]
     private let observers = NotificationObserverBag()
 
-    var inputLabel: String { AudioInputLabel.label(for: inputs, glassesBuild: glassesBuild) }
-    var isGlassesMic: Bool { AudioInputLabel.isGlassesMic(inputs, glassesBuild: glassesBuild) }
+    /// Name of the connected DAT glasses (glasses build), for an exact port-name match.
+    private let glassesDeviceName: @MainActor () -> String?
+
+    var inputLabel: String {
+        AudioInputLabel.label(for: inputs, glassesBuild: glassesBuild, glassesDeviceName: glassesDeviceName())
+    }
+    var isGlassesMic: Bool {
+        AudioInputLabel.isGlassesMic(inputs, glassesBuild: glassesBuild, glassesDeviceName: glassesDeviceName())
+    }
 
     init(glassesBuild: Bool,
+         glassesDeviceName: @escaping @MainActor () -> String? = { nil },
          notificationCenter: NotificationCenter = .default,
          read: @escaping @MainActor () -> [AudioInputPort] = AudioRouteMonitor.currentInputs) {
         self.glassesBuild = glassesBuild
+        self.glassesDeviceName = glassesDeviceName
         self.read = read
         inputs = read()
         observers.add(notificationCenter.addObserver(

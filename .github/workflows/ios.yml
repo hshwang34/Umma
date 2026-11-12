@@ -23,5 +23,5 @@ jobs:
       - name: Glasses flavour
         run: |
           SIM_OS=$(ios/scripts/sim-os.sh "iPhone 16")
-          case "$SIM_OS" in 26.*) ;; *) echo "::warning::iPhone 16 runtime is $SIM_OS; glasses tests expect iOS 26" ;; esac
+          case "$SIM_OS" in 26.*) ;; *) echo "::error::iPhone 16 runtime is '$SIM_OS'; the glasses tests need iOS 26 (MWDATCore crashes the test host on iOS 17)"; exit 1 ;; esac
           make ios-check-glasses SIM="iPhone 16"
