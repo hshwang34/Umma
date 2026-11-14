@@ -6,6 +6,7 @@ import SwiftUI
 struct LiveScanSheet: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let onAdded: ([PantryItem]) -> Void
 
     @State private var model: LiveScanViewModel?
@@ -30,23 +31,29 @@ struct LiveScanSheet: View {
                 if review == nil {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
+                            // "Saving your scan…": the server save lands whatever happens here.
+                            .disabled(model?.blocksDismissal == true)
                             .accessibilityIdentifier("liveScan.cancel")
                     }
                 }
             }
         }
-        .interactiveDismissDisabled(review != nil)
+        .interactiveDismissDisabled(review != nil || model?.blocksDismissal == true)
         .task {
             guard model == nil else { return }
             let model = LiveScanViewModel(camera: Self.camera(environment.camera), tokens: environment.api, service: environment.api)
+            // Auto-added items are in the pantry once Done has saved, even if this sheet has gone.
+            model.onFinished = { result in onAdded(result.autoAdded) }
             self.model = model
             await model.start()
         }
         .onChange(of: model?.phase) { _, phase in
             guard phase == .finished, review == nil, let model, let result = model.result else { return }
-            // Auto-added items are in the pantry now, even if this sheet is closed from here on.
-            onAdded(result.autoAdded)
             review = LiveScanReviewModel(result: result, isDemo: model.isDemo, service: environment.api)
+        }
+        // Backgrounded: the camera goes off and stays off until the cook taps "Keep scanning".
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background, let model { Task { await model.pauseForBackground() } }
         }
         .onDisappear {
             if let model { Task { await model.cancel() } }
