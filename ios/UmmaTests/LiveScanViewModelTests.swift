@@ -35,8 +35,11 @@ final class FakeLiveScanBasketService: LiveScanBasketService, @unchecked Sendabl
     func removeLiveScanItem(scanID: UUID, key: String) async throws {
         record(.remove(scanID, key)); try removeHandler(key)
     }
+    /// Holds the finish request open (after it is recorded).
+    var finishSuspend: (@Sendable () async -> Void)?
+
     func finishLiveScan(scanID: UUID) async throws -> LiveScanFinished {
-        record(.finish(scanID)); return try finishHandler()
+        record(.finish(scanID)); await finishSuspend?(); return try finishHandler()
     }
 
     var removeCalls: [String] {
@@ -520,6 +523,123 @@ final class LiveScanViewModelTests: XCTestCase {
         service.finishHandler = { LiveScanFinished(saved: [], review: []) }
         await model.finish()
         XCTAssertEqual(model.phase, .finished)
+    }
+
+    // MARK: - Lifecycle (review fixes)
+
+    func testBackgroundingStopsTheScanAndNothingResumesOnItsOwn() async {
+        let model = makeModel()
+        await model.start()
+        await report("eggs", on: factory.made[0])
+        await model.pauseForBackground()
+
+        XCTAssertEqual(model.phase, .paused)
+        XCTAssertFalse(model.cameraOn, "camera off")
+        XCTAssertFalse(factory.made[0].isOpen, "transport closed")
+        XCTAssertFalse(offerFrame(), "no frames flow")
+        XCTAssertEqual(model.basket.map(\.name), ["eggs"], "the basket is kept")
+        XCTAssertEqual(model.message, LiveScanViewModel.pausedMessage)
+        let remaining = model.secondsRemaining
+        clock.value += 60
+        await model.tick()
+        XCTAssertEqual(model.secondsRemaining, remaining, "the timer is stopped")
+        XCTAssertEqual(model.phase, .paused, "still paused after the app is back")
+        XCTAssertEqual(factory.made.count, 1, "no new session opens by itself")
+        XCTAssertEqual(tokens.requests.count, 1)
+
+        let shown = LiveScanScreenPresentation(phase: model.phase, cameraOn: model.cameraOn, secondsRemaining: model.secondsRemaining,
+                                               isDemo: false, message: model.message, permissionDenied: false,
+                                               basketCount: 1, canContinue: model.canContinue, canFinish: model.canFinish)
+        XCTAssertEqual(shown.title, "Scanning paused")
+        XCTAssertEqual(shown.continueTitle, "Keep scanning")
+        XCTAssertNil(shown.indicatorText)
+        XCTAssertNil(shown.countdownText)
+        XCTAssertTrue(shown.canFinish, "Done still saves the basket")
+        XCTAssertFalse(shown.isWarning)
+    }
+
+    func testKeepScanningAfterBackgroundIsTheCooksTapOnTheSameScan() async {
+        let model = makeModel()
+        await model.start()
+        await report("eggs", on: factory.made[0])
+        await model.pauseForBackground()
+        await model.continueScanning()
+
+        XCTAssertEqual(model.phase, .scanning)
+        XCTAssertTrue(model.cameraOn)
+        XCTAssertEqual(factory.made.count, 2)
+        XCTAssertEqual(service.createCalls.count, 1, "the same scan and basket")
+        XCTAssertEqual(model.basket.map(\.name), ["eggs"])
+        XCTAssertEqual(model.secondsRemaining, 120)
+    }
+
+    func testBackgroundingWhileStartingLeavesNothingRunning() async {
+        let latch = TestLatch()
+        tokens.suspend = { await latch.wait() }
+        let model = makeModel()
+        let starting = Task { await model.start() }
+        await waitUntil("the token request") { tokens.requests.count == 1 }
+        await model.pauseForBackground()
+        await latch.open()
+        await starting.value
+
+        XCTAssertEqual(model.phase, .paused)
+        XCTAssertFalse(model.cameraOn)
+        XCTAssertTrue(factory.made.isEmpty)
+        XCTAssertTrue(model.canContinue)
+    }
+
+    func testBackgroundingOnlyTouchesARunningScan() async {
+        let model = makeModel()
+        await model.pauseForBackground()
+        XCTAssertEqual(model.phase, .idle)
+        await model.start()
+        clock.value += 121
+        await model.tick()
+        XCTAssertEqual(model.phase, .timeUp)
+        await model.pauseForBackground()
+        XCTAssertEqual(model.phase, .timeUp)
+        await model.cancel()
+        await model.pauseForBackground()
+        XCTAssertEqual(model.phase, .cancelled)
+    }
+
+    func testASaveThatFinishesAfterTheSheetClosedStillReachesThePantry() async throws {
+        let finished = try PantryFixtures.decode(LiveScanFinished.self, LiveScanBasketFixtures.finishedJSON)
+        service.finishHandler = { finished }
+        let latch = TestLatch()
+        service.finishSuspend = { await latch.wait() }
+        let model = makeModel()
+        let delivered = TestBox<[[String]]>([])
+        model.onFinished = { result in delivered.value.append(result.autoAddedNames) }
+        await model.start()
+        await report("eggs", on: factory.made[0])
+
+        let saving = Task { await model.finish() }
+        await waitUntil("the finish request") { service.finishCalls.count == 1 }
+        XCTAssertEqual(model.phase, .finishing)
+        XCTAssertTrue(model.blocksDismissal, "Cancel and swipe-down are off while saving")
+        // What the sheet's onDisappear does, if it were closed anyway.
+        await model.cancel()
+        XCTAssertTrue(delivered.value.isEmpty)
+        await latch.open()
+        await saving.value
+
+        XCTAssertEqual(model.phase, .finished)
+        XCTAssertFalse(model.blocksDismissal)
+        XCTAssertEqual(delivered.value, [["eggs"]], "the pantry hears about the save exactly once")
+    }
+
+    func testAFailedSaveDeliversNothing() async {
+        service.finishHandler = { throw APIError.http(status: 500, correlationId: nil) }
+        let model = makeModel()
+        let delivered = TestBox(0)
+        model.onFinished = { _ in delivered.value += 1 }
+        await model.start()
+        await model.finish()
+        XCTAssertEqual(model.phase, .interrupted)
+        XCTAssertEqual(delivered.value, 0)
+        XCTAssertFalse(model.blocksDismissal)
     }
 
     func testCancelStopsEverythingAndSavesNothing() async {

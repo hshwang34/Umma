@@ -251,6 +251,12 @@ final class ScanCaptureViewModel {
     var observation: PantryObservation?
     /// Receipt mode only: the server's answer. The pantry has already changed when this is set.
     var receipt: ReceiptResult?
+    /// Receipt mode: called with the server's answer as soon as it arrives, whether or not the
+    /// capture sheet is still on screen. The pantry has already changed by then, so the Pantry
+    /// screen must always hear about it (banner, Undo, list).
+    var onReceipt: (@MainActor (ReceiptResult) -> Void)?
+    /// A photo is on its way to the server: the sheet must not be closed until it answers.
+    var blocksDismissal: Bool { isSubmitting }
 
     let camera: any CameraSource
     private let service: PantryService
@@ -355,6 +361,7 @@ final class ScanCaptureViewModel {
                 let result = try await receipts.readReceipt(upload)
                 photoData = nil
                 receipt = result
+                onReceipt?(result)
                 return
             }
             let result = try await service.observePhoto(upload)

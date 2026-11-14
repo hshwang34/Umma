@@ -382,8 +382,9 @@ struct PantryCaptureSheet: View {
     let kind: PantryCaptureKind
     let existingItems: [PantryItem]
     let onAdded: ([PantryItem]) -> Void
-    /// Receipt mode: the server's answer, handed over as the sheet closes.
-    var onReceipt: (ReceiptResult) -> Void = { _ in }
+    /// Receipt mode: the server's answer. Delivered by the capture model itself, so it arrives
+    /// even if this sheet is no longer on screen.
+    var onReceipt: @MainActor (ReceiptResult) -> Void = { _ in }
 
     @State private var speak: SpeakCaptureViewModel?
     @State private var scan: ScanCaptureViewModel?
@@ -403,6 +404,8 @@ struct PantryCaptureSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        // A photo in flight is saved by the server whatever happens here.
+                        .disabled(scan?.blocksDismissal == true)
                         .accessibilityIdentifier("capture.cancel")
                 }
             }
@@ -421,15 +424,17 @@ struct PantryCaptureSheet: View {
                 scan = ScanCaptureViewModel(camera: environment.camera, service: environment.api,
                                             fixture: environment.pantryPhotoFixture)
             case .receipt where scan == nil:
-                scan = ScanCaptureViewModel(camera: environment.camera, service: environment.api, receipts: environment.api)
+                let model = ScanCaptureViewModel(camera: environment.camera, service: environment.api, receipts: environment.api)
+                model.onReceipt = onReceipt
+                scan = model
             default:
                 break
             }
         }
+        .interactiveDismissDisabled(scan?.blocksDismissal == true)
         .onChange(of: scan?.receipt) { _, result in
-            guard let result else { return }
-            onReceipt(result)
-            dismiss()
+            // The result itself went to the Pantry screen through `onReceipt`.
+            if result != nil { dismiss() }
         }
         .onDisappear {
             speak?.endListening()
