@@ -18,16 +18,29 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
+import pydantic
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.ai.providers.base import ReceiptDraft, ReceiptLine
+from app.db.models import PantryItem, PantryReceipt, User
 from app.domains.matching.dictionary import IngredientDictionary
 from app.domains.matching.normalize import normalize
 from app.domains.matching.units import pantry_unit
+from app.domains.pantry import service
 from app.domains.pantry.observations import confidence_bin
 from app.domains.pantry.schemas import (
     QUANTITY_MAX,
+    CreateReceiptPantryItems,
+    MergeInto,
+    PantryItemOut,
+    ReceiptNewItem,
+    ReceiptResult,
     ReceiptSkipped,
+    ReceiptWouldAdd,
 )
 
 
@@ -122,3 +135,109 @@ def read_lines(
             first.unit = first.unit if same_unit else None
             first.confidence = min(first.confidence, bought.confidence)
     return list(purchases.values()), skipped
+
+
+def _snapshot(row: PantryItem) -> dict[str, object]:
+    return {
+        "quantity": _dec(row.quantity),
+        "unit": row.unit,
+        "last_confirmed_at": row.last_confirmed_at.isoformat() if row.last_confirmed_at else None,
+        "source": row.source.value,
+        "confidence": row.confidence,
+        "quantity_is_estimate": row.quantity_is_estimate,
+    }
+
+
+async def save_receipt(
+    session: AsyncSession,
+    user: User,
+    draft: ReceiptDraft,
+    dictionary: IngredientDictionary,
+    now: datetime,
+) -> ReceiptResult:
+    purchases, skipped = read_lines(draft, dictionary)
+    result = ReceiptResult(
+        receipt_id=None, purchased_on=draft.purchased_on, store=draft.store, skipped=skipped
+    )
+    if draft.demo:  # a fixture answered: nothing is saved and no receipt is recorded
+        result.demo = True
+        result.would_add = [
+            ReceiptWouldAdd(name=p.key, quantity=float(p.amount), unit=p.unit) for p in purchases
+        ]
+        return result
+
+    # The pantry lock also serialises two uploads of one receipt: the second sees the first's row.
+    await service.lock_user(session, user.id, "pantry")
+    digest = receipt_hash(draft)
+    if digest is not None:
+        seen = await session.scalar(
+            select(PantryReceipt).where(
+                PantryReceipt.owner_user_id == user.id, PantryReceipt.receipt_hash == digest
+            )
+        )
+        if seen is not None:
+            replay = ReceiptResult.model_validate(seen.result_json["response"])
+            return replay.model_copy(update={"duplicate": True})
+
+    existing: dict[str, PantryItem] = {}
+    rows = await session.scalars(
+        select(PantryItem)
+        .where(
+            PantryItem.owner_user_id == user.id,
+            PantryItem.normalized_name.in_({p.key for p in purchases}),
+        )
+        .order_by(PantryItem.last_confirmed_at.desc().nulls_last(), PantryItem.id)
+    )
+    for row in rows:  # several rows of one name (keep_both): the most recently confirmed
+        existing.setdefault(row.normalized_name, row)
+
+    items: list[ReceiptNewItem] = []
+    undo_merged: list[dict[str, object]] = []
+    for p in purchases:
+        target = existing.get(p.key)
+        if target is None:
+            quantity, unit = p.amount, p.unit
+        else:
+            quantity, unit = merged_quantity(target.quantity, target.unit, p), target.unit
+        try:
+            item = ReceiptNewItem(
+                raw_label=p.label,
+                quantity=float(quantity) if quantity is not None else None,
+                unit=unit if quantity is not None else None,  # type: ignore[arg-type]
+                source="receipt",
+                confidence=p.confidence,
+                resolution=MergeInto(merge_into=target.id) if target is not None else None,
+            )
+        except pydantic.ValidationError:  # a label or amount the pantry would not accept
+            result.skipped.append(ReceiptSkipped(raw_text=p.raw_text, reason="unreadable"))
+            continue
+        items.append(item)
+        if target is not None:
+            undo_merged.append({"id": str(target.id), "previous": _snapshot(target)})
+
+    saved: list[PantryItem] = []
+    if items:
+        body = CreateReceiptPantryItems(items=items)
+        saved = await service.create_items(session, user, body, dictionary, now)
+    for item, row in zip(items, saved, strict=True):
+        (result.merged if item.resolution is not None else result.added).append(
+            PantryItemOut.of(row)
+        )
+
+    receipt = PantryReceipt(
+        owner_user_id=user.id,
+        receipt_hash=digest,
+        purchased_on=draft.purchased_on,
+        store=draft.store,
+        result_json={},
+    )
+    session.add(receipt)
+    await session.flush()
+    result.receipt_id = receipt.id
+    receipt.result_json = {
+        "response": result.model_dump(mode="json"),
+        # What a whole-receipt undo needs (the endpoint is a later PR).
+        "undo": {"created": [str(i.id) for i in result.added], "merged": undo_merged},
+    }
+    await session.flush()
+    return result
