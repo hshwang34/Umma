@@ -64,3 +64,4 @@ def test_dockerfile_and_ignore_file_are_where_fly_builds_from() -> None:
     ignore = (REPO_DIR / ".dockerignore").read_text().splitlines()
     assert "*" in ignore  # allow-list: everything is excluded by default
     assert "**/.env" in ignore
+    assert {"**/*.p8", "**/*.pem", "**/*.key"} <= set(ignore)  # key files never reach an image

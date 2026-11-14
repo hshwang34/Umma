@@ -16,6 +16,7 @@ from app.ai.registry import build_provider
 from app.api.v1 import auth as auth_router
 from app.api.v1 import auth_apple as auth_apple_router
 from app.api.v1 import auth_google as auth_google_router
+from app.api.v1 import auth_review as auth_review_router
 from app.api.v1.router import router as v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -118,6 +119,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 fetch_keys=http_key_fetcher(settings.google_keys_url),
             )
             app.include_router(auth_google_router.router, **sign_in)
+    if settings.review_login_code is not None:
+        # Beta App Review login (brief 010): the path exists only while the secret is set.
+        app.include_router(auth_review_router.router, **sign_in)
     return app
 
 

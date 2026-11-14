@@ -20,7 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -28,6 +28,7 @@ REPO_DIR = BACKEND_DIR.parent
 
 APP_VERSION = "0.1.0"
 MIN_JWT_SECRET_BYTES = 32
+MIN_REVIEW_CODE_CHARS = 20
 # Matches the MinIO container in backend/docker-compose.yml; refused in prod.
 DEV_STORAGE_ACCESS_KEY = "umma-dev"
 DEV_STORAGE_SECRET_KEY = "umma-dev-secret"
@@ -77,6 +78,11 @@ class Settings(BaseSettings):
     apple_private_key: SecretStr | None = None
     apple_token_url: str = "https://appleid.apple.com/auth/token"
     apple_revoke_url: str = "https://appleid.apple.com/auth/revoke"
+    # Review login for Apple's Beta App Review (brief 010 PR 3): one fixed account behind this
+    # secret code. Unset (or empty) means POST /v1/auth/review does not exist.
+    review_login_code: SecretStr | None = None
+    rate_limit_review_login_per_ip_per_minute: int = Field(default=5, ge=1)
+    rate_limit_review_login_total_per_minute: int = Field(default=30, ge=1)
     # Sign in with Google (DECISIONS #33): the iOS OAuth client id ID tokens must be issued for.
     # Not a secret. Unset means the Google route does not exist.
     google_ios_client_id: str | None = None
@@ -228,8 +234,21 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(default_factory=list)
 
+    @field_validator("review_login_code", mode="before")
+    @classmethod
+    def _empty_review_code_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
+
     @model_validator(mode="after")
     def _refuse_insecure_configuration(self) -> Settings:
+        if (
+            self.review_login_code is not None
+            and len(self.review_login_code.get_secret_value()) < MIN_REVIEW_CODE_CHARS
+        ):
+            raise ValueError(
+                f"REVIEW_LOGIN_CODE must be at least {MIN_REVIEW_CODE_CHARS} characters "
+                "(generate one: openssl rand -base64 24)"
+            )
         if len(self.jwt_secret.encode("utf-8")) < MIN_JWT_SECRET_BYTES:
             raise ValueError(
                 f"JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes (RFC 7518 §3.2)"
