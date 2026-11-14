@@ -27,6 +27,8 @@ from app.ai.providers.base import (
     PantryObservation,
     PantryObservationRequest,
     ProposedAction,
+    ReceiptDraft,
+    ReceiptRequest,
     SubstitutionRequest,
     SubstitutionResponse,
     SubstitutionSuggestion,
@@ -40,6 +42,7 @@ PHOTO_FIXTURE_SUBDIR = "pantry_observations"
 VIDEO_FIXTURE_SUBDIR = "video_extractions"
 DEFAULT_VIDEO_FIXTURE = "demo"
 DEFAULT_PHOTO_FIXTURE = "demo_counter"
+RECEIPT_FIXTURE = "receipts/demo.json"
 
 _NUMBER_WORDS: dict[str, float] = {
     "a": 1,
@@ -435,6 +438,12 @@ class MockAIProvider:
             notes=["I can't confirm what this is from the image. Try a closer, labeled shot."],
             unknowns=["what is in this photo"],
         )
+
+    async def read_receipt(self, request: ReceiptRequest) -> ReceiptDraft:
+        """The fixture receipt, labelled as a demo: the mock never reads the photo."""
+        path = self.fixtures_dir / "expected_outputs" / RECEIPT_FIXTURE
+        draft = ReceiptDraft.model_validate_json(path.read_text(encoding="utf-8"))
+        return draft.model_copy(update={"demo": True})
 
     def _photo_fixture(self, image_ref: str | None) -> dict[str, Any] | None:
         if not image_ref:
