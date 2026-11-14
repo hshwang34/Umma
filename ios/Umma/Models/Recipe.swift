@@ -25,9 +25,19 @@ struct RecipeCard: Codable, Sendable, Identifiable, Hashable {
     var saved: Bool? = nil
     /// Brief 015: only on For You cards.
     var feed: FeedInfo? = nil
+    /// Brief 019: who took a stock cover photo. Cards decode it but never display it.
+    var coverCredit: CoverCredit? = nil
 
     var id: UUID { recipeId }
     var coverImageURL: URL? { coverImageUrl.flatMap(URL.init(string:)) }
+}
+
+/// Brief 019: the additive, nullable `cover_credit` on cards and detail. `source` stays a string,
+/// so a future provider decodes instead of failing the whole recipe.
+struct CoverCredit: Codable, Sendable, Hashable {
+    let name: String
+    let url: String
+    let source: String
 }
 
 struct RecipePage: Codable, Sendable, Equatable {
@@ -58,6 +68,8 @@ struct RecipeDetail: Codable, Sendable, Identifiable, Hashable {
     /// Brief 003 additions; optional so Slice 0 fixtures still decode.
     var saved: Bool? = nil
     var shareUrl: String? = nil
+    /// Brief 019: who took a stock cover photo; null for creator photos and older payloads.
+    var coverCredit: CoverCredit? = nil
 
     var id: UUID { recipeId }
     var coverImageURL: URL? { coverImageUrl.flatMap(URL.init(string:)) }

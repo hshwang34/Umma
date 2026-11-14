@@ -52,6 +52,14 @@ final class RecipeDetailViewModel {
     var prepMinutes: Int? { detail?.prepMinutes ?? card?.prepMinutes }
     var cookMinutes: Int? { detail?.cookMinutes ?? card?.cookMinutes }
     var coverImageURL: URL? { detail?.coverImageURL ?? card?.coverImageURL }
+    /// Brief 019: the photo and its credit always come from the same payload, so a creator photo
+    /// on the detail never carries a stale stock credit from the card.
+    var photo: RecipePhotoPresentation {
+        if let detail, detail.coverImageURL != nil {
+            return RecipePhotoPresentation(imageURL: detail.coverImageURL, credit: detail.coverCredit)
+        }
+        return RecipePhotoPresentation(imageURL: card?.coverImageURL, credit: card?.coverCredit)
+    }
     /// Server-provided when present; otherwise the contract's canonical universal link.
     var shareURL: URL { detail?.shareURL ?? ShareLinks.universal(recipeId: recipeId) }
 

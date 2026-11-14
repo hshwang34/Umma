@@ -137,7 +137,7 @@ struct DraftPreviewView: View {
                         prepMinutes: detail.prepMinutes,
                         cookMinutes: detail.cookMinutes,
                         servings: detail.servings,
-                        coverImageURL: detail.coverImageURL
+                        photo: RecipePhotoPresentation(imageURL: detail.coverImageURL, credit: detail.coverCredit)
                     )
                     RecipeDetailContent(detail: detail)
                 }
