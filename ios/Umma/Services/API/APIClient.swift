@@ -38,6 +38,8 @@ protocol AuthService: Sendable {
     /// Sign in with Google (brief 010): exchange Google's ID token and the raw nonce for our token.
     func signInWithGoogle(idToken: String, nonce: String) async throws -> AuthResponse
     func me() async throws -> User
+    /// `DELETE /v1/me` (brief 010): deletes the account and everything in it. 204 on success.
+    func deleteAccount() async throws
 }
 
 /// Monotonic sign-in generation shared by `APIClient` and `AuthStore`. A request remembers the
@@ -125,6 +127,13 @@ final class APIClient: Sendable, RecipeService, AuthService {
 
     func me() async throws -> User {
         try await send(.get("/v1/me"))
+    }
+
+    func deleteAccount() async throws {
+        // The server also revokes the Apple token, so allow more than the default 15 s.
+        var endpoint = Endpoint.delete("/v1/me")
+        endpoint.timeout = 30
+        _ = try await raw(endpoint)
     }
 
     func listRecipes(query: String? = nil, tag: String? = nil, cursor: String? = nil, limit: Int = 20) async throws -> RecipePage {

@@ -15,6 +15,9 @@ final class AuthStore {
     private(set) var state: State = .restoring
     /// Message shown on the sign-in screen (restore failure, forced sign-out, ...).
     var banner: String?
+    /// Something that went as intended and is worth saying once on the sign-in screen
+    /// ("Your account was deleted."). Not an error; cleared by the next sign-in.
+    private(set) var notice: String?
     /// Set after `requestCode`; the sign-in screen shows the code step while this is non-nil.
     private(set) var pendingChallenge: DevLoginChallenge?
     private(set) var pendingEmail: String?
@@ -139,6 +142,7 @@ final class AuthStore {
         pendingChallenge = nil
         pendingEmail = nil
         banner = nil
+        notice = nil
         state = .signedIn(response.user)
     }
 
@@ -172,8 +176,27 @@ final class AuthStore {
     /// restore). Only a user who was actually signed in sees a banner.
     func serverChanged(to newValue: String) {
         let wasSignedIn = isSignedIn
+        dropEverything(reason: wasSignedIn ? "Server changed to \(newValue). Sign in again." : nil)
+    }
+
+    /// Delete the signed-in account (brief 010). On success the local state goes exactly as it
+    /// does for a server change (token, cached user, recipe cache, pending code) and the app is
+    /// back on sign-in. On failure this throws and nothing local changes: still signed in.
+    func deleteAccount() async throws {
+        guard isSignedIn else { return }
+        let issued = generation.current()
+        try await api.deleteAccount()
+        // Signed out (or in again) while the request was in flight: that session is not ours to end.
+        guard generation.current() == issued else { return }
+        dropEverything(reason: nil)
+        notice = AccountDeletionModel.deletedNotice
+    }
+
+    /// Everything that belongs to the session and its server: the pending sign-in code, the
+    /// token, the cached user and the cached recipes.
+    private func dropEverything(reason: String?) {
         cancelPendingChallenge()
-        forceSignOut(reason: wasSignedIn ? "Server changed to \(newValue). Sign in again." : nil)
+        forceSignOut(reason: reason)
     }
 
     #if DEBUG

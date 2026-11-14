@@ -16,6 +16,9 @@ struct ProfileView: View {
     @State private var typeInAfterCapture = false
     @State private var pendingCaptures: [CaptureJournalRecord] = []
     @State private var showServerSettings = false
+    // Brief 010: delete account.
+    @State private var deletion: AccountDeletionModel?
+    @State private var confirmDeleteAccount = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +43,7 @@ struct ProfileView: View {
                             .frame(maxWidth: .infinity, minHeight: Metrics.minTapTarget)
                     }
                 }
+                deleteAccountSection
             }
             .scrollContentBackground(.hidden)
             .background(SLColor.background)
@@ -73,6 +77,17 @@ struct ProfileView: View {
             } message: {
                 Text("Only the draft is deleted. Anything already published stays published.")
             }
+        }
+        .confirmationDialog(AccountDeletionModel.confirmationTitle, isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
+            Button(AccountDeletionModel.confirmButton, role: .destructive) {
+                let model = deletion ?? AccountDeletionModel(auth: environment.auth)
+                deletion = model
+                Task { await model.deleteConfirmed() }
+            }
+            .accessibilityIdentifier("profile.deleteAccount.confirm")
+            Button(AccountDeletionModel.cancelButton, role: .cancel) {}
+        } message: {
+            Text(AccountDeletionModel.confirmationMessage)
         }
         .task {
             if model == nil {
@@ -310,6 +325,31 @@ struct ProfileView: View {
             } header: {
                 Text("Account")
             }
+        }
+    }
+
+    private var deleteAccountSection: some View {
+        Section {
+            Button(role: .destructive) {
+                confirmDeleteAccount = true
+            } label: {
+                HStack {
+                    Text("Delete account")
+                    Spacer()
+                    if deletion?.isDeleting == true { ProgressView() }
+                }
+                .frame(minHeight: Metrics.minTapTarget)
+            }
+            .disabled(deletion?.isDeleting == true)
+            .accessibilityIdentifier("profile.deleteAccount")
+            if let message = deletion?.errorMessage {
+                Label(message, systemImage: "exclamationmark.circle.fill")
+                    .font(SLFont.footnote)
+                    .foregroundStyle(SLColor.danger)
+                    .accessibilityLabel("Error: \(message)")
+            }
+        } footer: {
+            Text(AccountDeletionModel.footer)
         }
     }
 

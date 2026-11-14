@@ -246,6 +246,12 @@ struct SignInView: View {
 
     @ViewBuilder
     private var inlineError: some View {
+        if errorMessage == nil, environment.auth.banner == nil, let notice = environment.auth.notice {
+            Label(notice, systemImage: "checkmark.circle")
+                .font(SLFont.footnote)
+                .foregroundStyle(SLColor.textSecondary)
+                .accessibilityIdentifier("signin.notice")
+        }
         if let message = errorMessage ?? environment.auth.banner {
             Label(message, systemImage: "exclamationmark.circle.fill")
                 .font(SLFont.footnote)
