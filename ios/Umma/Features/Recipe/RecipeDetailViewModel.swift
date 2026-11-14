@@ -31,8 +31,9 @@ final class RecipeDetailViewModel {
     /// tell the Saved tab to refresh.
     var onSavedChanged: (@MainActor (UUID, Bool) -> Void)?
 
-    init(recipeId: UUID, card: RecipeCard? = nil, service: RecipeService) {
+    init(recipeId: UUID, card: RecipeCard? = nil, defaultServings: Int? = nil, service: RecipeService) {
         self.recipeId = recipeId
+        self.defaultServings = defaultServings
         self.card = card
         self.service = service
         if let saved = card?.saved { isSaved = saved }
@@ -52,13 +53,16 @@ final class RecipeDetailViewModel {
 
     // MARK: Servings (brief 020)
 
-    /// What the cook dialled on this visit. Nil until they touch the dial: the recipe then shows
-    /// its own servings. Never saved; a published version is never changed.
+    /// What the cook dialled on this visit. Nil until they touch the dial: the recipe then opens
+    /// at the Profile default, or its own servings when none is set. Never saved (a dial change
+    /// is for this visit only), and a published version is never changed.
     private(set) var chosenServings: Int?
+    /// Profile → Default servings. Nil means "the recipe's own".
+    var defaultServings: Int?
 
     /// The servings control, once the recipe has loaded.
     var dial: ServingsDial? {
-        detail.flatMap { ServingsDial(original: $0.servings, chosen: chosenServings) }
+        detail.flatMap { ServingsDial(original: $0.servings, chosen: chosenServings ?? defaultServings) }
     }
 
     /// Ingredient amounts for the servings on the dial. At the recipe's own servings these are
