@@ -23,8 +23,10 @@ enum Radius {
 enum Metrics {
     /// PRD §14: minimum tap target.
     static let minTapTarget: CGFloat = 44
-    static let heroAspect: CGFloat = 4.0 / 3.0
-    static let cardAspect: CGFloat = 16.0 / 10.0
+    /// Brief 019: a short banner on the recipe page and on cards (about 2.4:1), so the title and
+    /// actions stay on the first screen and two cards fit on Explore.
+    static let heroAspect: CGFloat = 12.0 / 5.0
+    static let cardAspect: CGFloat = 12.0 / 5.0
     /// Cooking Back / Next height (PRD §6.1: the phone may be propped at a distance).
     static let cookingControl: CGFloat = 64
 }

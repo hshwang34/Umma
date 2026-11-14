@@ -78,7 +78,7 @@ struct RecipeDetailView: View {
                     prepMinutes: model.prepMinutes,
                     cookMinutes: model.cookMinutes,
                     servings: model.servings,
-                    coverImageURL: model.coverImageURL,
+                    photo: model.photo,
                     artSeed: recipeId,
                     heroBleed: Spacing.screen
                 )
@@ -321,27 +321,78 @@ struct RecipeHeaderView: View {
     let prepMinutes: Int?
     let cookMinutes: Int?
     let servings: Int?
-    let coverImageURL: URL?
+    /// Brief 019: the photo, whether it opens the viewer, and its credit line.
+    let photo: RecipePhotoPresentation
     /// Picks the placeholder gradient when there is no photo (the recipe id keeps it stable).
     var artSeed: UUID? = nil
     /// How far the hero bleeds past the parent's horizontal padding (full-bleed on detail).
     var heroBleed: CGFloat = 0
 
+    @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var viewerItem: PhotoViewerItem?
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
-            hero
+            VStack(alignment: .leading, spacing: 0) {
+                hero
+                if let credit = photo.credit {
+                    creditLine(credit)
+                }
+            }
             header
+        }
+        .fullScreenCover(item: $viewerItem) { item in
+            RecipePhotoViewer(url: item.url)
         }
     }
 
+    @ViewBuilder
     private var hero: some View {
-        RecipeCoverArt(url: coverImageURL, seed: artSeed ?? Self.fallbackSeed)
+        let art = RecipeCoverArt(url: photo.imageURL, seed: artSeed ?? Self.fallbackSeed)
             .aspectRatio(Metrics.heroAspect, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: heroBleed > 0 ? 0 : Radius.card, style: .continuous))
+            .contentShape(Rectangle())
             .padding(.horizontal, -heroBleed)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(coverImageURL == nil ? "No photo yet" : "Recipe photo")
+        if photo.opensViewer, let url = photo.imageURL {
+            Button {
+                // Reduce Motion: the viewer appears without the slide-up.
+                var transaction = Transaction()
+                transaction.disablesAnimations = reduceMotion
+                withTransaction(transaction) { viewerItem = PhotoViewerItem(url: url) }
+            } label: { art }
+                .buttonStyle(.plain)
+                .accessibilityLabel(photo.accessibilityLabel)
+                .accessibilityHint(photo.accessibilityHint ?? "")
+                .accessibilityIdentifier("recipe.photo")
+        } else {
+            // The placeholder is decorative and does nothing on tap.
+            art
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(photo.accessibilityLabel)
+                .accessibilityIdentifier("recipe.photo")
+        }
+    }
+
+    /// "Photo: Jane Doe / Pexels", linking to the photographer (Pexels' API terms ask for it).
+    private func creditLine(_ credit: RecipePhotoPresentation.Credit) -> some View {
+        Button {
+            openURL(credit.url)
+        } label: {
+            Text(credit.text)
+                .font(SLFont.caption)
+                .foregroundStyle(SLColor.textSecondary)
+                .underline()
+                .multilineTextAlignment(.leading)
+                .frame(minHeight: Metrics.minTapTarget, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(credit.accessibilityLabel)
+        .accessibilityHint(credit.accessibilityHint)
+        .accessibilityAddTraits(.isLink)
+        .accessibilityIdentifier("recipe.photoCredit")
     }
 
     private static let fallbackSeed = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))

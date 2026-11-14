@@ -2,7 +2,7 @@ import Foundation
 
 /// `POST /v1/ai/live-token` (brief 016 PR 2). A single-use Gemini Live token locked on the server
 /// to the model, instructions and `add_item` tool. The phone never holds a provider key.
-struct LiveScanToken: Decodable, Sendable, Equatable {
+struct LiveScanToken: Sendable, Equatable {
     /// `auth_tokens/...`. Secret: never log it (`description` redacts it).
     let token: String
     let model: String
@@ -15,6 +15,31 @@ struct LiveScanToken: Decodable, Sendable, Equatable {
     let frameMaxFps: Double
     /// Mock provider or over a cap: replay the demo script, never auto-save.
     let demo: Bool
+}
+
+extension LiveScanToken: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case token, model, expiresAt, newSessionExpiresAt, maxSessionSeconds, nudgeText, nudgeEveryFrames, frameMaxFps, demo
+    }
+
+    /// A demo answer carries `null` for the token and both expiries; a real one must have all three.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let demo = try values.decode(Bool.self, forKey: .demo)
+        let token = try values.decodeIfPresent(String.self, forKey: .token)
+        let expiresAt = try values.decodeIfPresent(Date.self, forKey: .expiresAt)
+        let newSessionExpiresAt = try values.decodeIfPresent(Date.self, forKey: .newSessionExpiresAt)
+        if !demo, token == nil || expiresAt == nil || newSessionExpiresAt == nil {
+            throw DecodingError.dataCorruptedError(forKey: .token, in: values,
+                                                   debugDescription: "A live token without a token or expiry.")
+        }
+        self.init(token: token ?? "", model: try values.decode(String.self, forKey: .model),
+                  expiresAt: expiresAt ?? .distantPast, newSessionExpiresAt: newSessionExpiresAt ?? .distantPast,
+                  maxSessionSeconds: try values.decode(Int.self, forKey: .maxSessionSeconds),
+                  nudgeText: try values.decode(String.self, forKey: .nudgeText),
+                  nudgeEveryFrames: try values.decode(Int.self, forKey: .nudgeEveryFrames),
+                  frameMaxFps: try values.decode(Double.self, forKey: .frameMaxFps), demo: demo)
+    }
 }
 
 extension LiveScanToken: CustomStringConvertible, CustomDebugStringConvertible {
@@ -82,12 +107,26 @@ enum LiveScanTransports {
 }
 
 protocol LiveScanService: Sendable {
-    /// Reserves the scan's worst-case cost, then mints the token. Over a cap → demo or an error.
-    func liveScanToken() async throws -> LiveScanToken
+    /// Reserves the scan's worst-case cost, then mints the token. Over a spend cap the answer is a
+    /// `demo` token; over the hourly token limit it is a 429. `alreadyInBasket` names what earlier
+    /// sessions of this scan reported, so a rotated session doesn't report them again.
+    func liveScanToken(alreadyInBasket: [String]) async throws -> LiveScanToken
+}
+
+extension LiveScanService {
+    func liveScanToken() async throws -> LiveScanToken {
+        try await liveScanToken(alreadyInBasket: [])
+    }
 }
 
 extension APIClient: LiveScanService {
-    func liveScanToken() async throws -> LiveScanToken {
-        try await send(.post("/v1/ai/live-token", body: Self.emptyObject))
+    func liveScanToken(alreadyInBasket: [String]) async throws -> LiveScanToken {
+        // Server limits: 100 names of at most 60 characters (422 beyond them).
+        let names = alreadyInBasket.prefix(100).map { String($0.prefix(60)) }
+        return try await send(.post("/v1/ai/live-token", body: try encoder.encode(LiveTokenRequest(alreadyInBasket: names))))
     }
+}
+
+private struct LiveTokenRequest: Encodable {
+    let alreadyInBasket: [String]
 }

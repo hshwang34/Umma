@@ -44,6 +44,7 @@ struct DraftEditorView: View {
                         .foregroundStyle(SLColor.warning)
                 }
             }
+            if let review { reviewSection(review) }
             metadataSection
             ingredientsSection
             stepsSection
@@ -162,13 +163,16 @@ struct DraftEditorView: View {
             TagChipsEditor(tags: $model.form.tags)
             problemRows(model.problems(for: "tags"))
             Stepper(value: $model.form.servings, in: 1...99) {
-                LabeledContent("Servings", value: String(model.form.servings))
+                LabeledContent("Servings", value: model.form.servingsUnset ? "—" : String(model.form.servings))
             }
             .accessibilityIdentifier("draft.servings")
+            if review?.servingsNeedsReview == true { needsReviewRow("Servings") }
             problemRows(model.problems(for: "servings"))
             MinutesField(label: "Prep time", value: $model.form.prepMinutes)
+            if review?.prepTimeNeedsReview == true { needsReviewRow("Prep time") }
             problemRows(model.problems(for: "prep_minutes"))
             MinutesField(label: "Cook time", value: $model.form.cookMinutes)
+            if review?.cookTimeNeedsReview == true { needsReviewRow("Cook time") }
             problemRows(model.problems(for: "cook_minutes"))
         } header: {
             Text("Recipe")
@@ -189,6 +193,7 @@ struct DraftEditorView: View {
                                     .foregroundStyle(SLColor.textSecondary)
                             }
                         }
+                        reviewLabels(DraftReviewPresentation.ingredientLabels(ingredient, isAIDraft: review != nil))
                         inlineProblems(model.problems(in: "ingredients", row: index))
                     }
                 }
@@ -227,6 +232,7 @@ struct DraftEditorView: View {
                                 .lineLimit(2)
                                 .foregroundStyle(SLColor.textPrimary)
                             stepMeta(step)
+                            reviewLabels(DraftReviewPresentation.stepLabels(step, isAIDraft: review != nil))
                             inlineProblems(model.problems(in: "steps", row: index))
                         }
                     }
@@ -248,7 +254,9 @@ struct DraftEditorView: View {
         } header: {
             Text("Steps")
         } footer: {
-            Text("Steps are numbered in the order shown. Everything here is labelled “Creator instructions”.")
+            Text(review == nil
+                 ? "Steps are numbered in the order shown. Everything here is labelled “Creator instructions”."
+                 : "Steps are numbered in the order shown. Publishing marks AI-drafted steps as checked by you.")
         }
     }
 
@@ -303,6 +311,57 @@ struct DraftEditorView: View {
         let count = model.problems.count
         if count == 0 { return "Save the draft to check whether it can be published." }
         return count == 1 ? "Fix 1 problem to publish." : "Fix \(count) problems to publish."
+    }
+
+    // MARK: - AI review labels (brief 014)
+
+    private var review: DraftReviewPresentation? {
+        DraftReviewPresentation(draft: model.draft, form: model.form)
+    }
+
+    private func reviewSection(_ review: DraftReviewPresentation) -> some View {
+        Section {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Label(review.bannerTitle, systemImage: "sparkles")
+                    .font(SLFont.headline)
+                    .foregroundStyle(SLColor.textPrimary)
+                Text(review.bannerMessage)
+                    .font(SLFont.footnote)
+                    .foregroundStyle(SLColor.textSecondary)
+                if let notice = review.notice {
+                    Text(notice)
+                        .font(SLFont.footnote)
+                        .foregroundStyle(SLColor.warning)
+                }
+                ForEach(review.unknowns, id: \.self) { unknown in
+                    Label(unknown, systemImage: "questionmark.circle")
+                        .font(SLFont.footnote)
+                        .foregroundStyle(SLColor.textPrimary)
+                }
+            }
+            .padding(.vertical, Spacing.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("draft.aiReview")
+        }
+    }
+
+    private func needsReviewRow(_ field: String) -> some View {
+        Label("\(field) \(DraftReviewPresentation.needsReview): you didn’t say it", systemImage: "exclamationmark.bubble")
+            .font(SLFont.footnote)
+            .foregroundStyle(SLColor.warning)
+    }
+
+    @ViewBuilder
+    private func reviewLabels(_ labels: [String]) -> some View {
+        if !labels.isEmpty {
+            FlowLayout(spacing: Spacing.xs) {
+                ForEach(labels, id: \.self) { label in
+                    MetadataPill(text: label, systemImage: label == DraftReviewPresentation.aiLabel ? "sparkles" : "exclamationmark.bubble",
+                                 style: label == DraftReviewPresentation.aiLabel ? .accent : .neutral)
+                }
+            }
+            .accessibilityIdentifier("draft.reviewLabels")
+        }
     }
 
     // MARK: - Problem rows

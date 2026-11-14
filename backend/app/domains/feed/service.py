@@ -171,7 +171,8 @@ async def for_you(
         version = recipe.latest_version
         result = None
         if pantry and dictionary is not None and version is not None:
-            result = fit(version.id, ingredients_of(version), pantry, dictionary, now)
+            title = version.title or recipe.title
+            result = fit(version.id, ingredients_of(version), pantry, dictionary, now, title=title)
         scored.append(
             score_recipe(
                 recipe,

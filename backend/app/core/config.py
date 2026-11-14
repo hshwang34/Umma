@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     # month (declared size, counted at intent time, never refunded).
     video_max_pending_uploads: int = Field(default=2, ge=1)
     video_upload_bytes_per_month: int = Field(default=1024 * 1024 * 1024, gt=0)
+    # Brief 019 cover photos: JPEG only; bytes count toward the same monthly upload budget.
+    cover_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    cover_max_pending_uploads: int = Field(default=5, ge=1)
 
     # Extraction worker (``python -m app.workers.extraction``).
     worker_lease_seconds: int = Field(default=120, ge=10)

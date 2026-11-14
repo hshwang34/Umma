@@ -325,6 +325,18 @@ PRD §4.2 (P1) forward and amends #4 ("P0 social = feed/save/share only").
   photos are never stored, and receipt reading stays inside the $0.25 per person daily cap (#19).
 *Lives in:* `docs/product/briefs/017-pantry-stays-current.md`.
 
+#30 · 2026-11-14 · **Ingredients get brand icons, drawn like the persimmon mark (brief 018).**
+- **Why:** the pantry is a list of plain words, hard to scan at 30 items, and doesn't look like
+  Umma. The PM compared four directions (`docs/briefing/umma-pantry-icon-options-2026-11-14.html`)
+  and chose A, "Persimmon flat": flat brand-palette fills, no outlines, real cut-out details.
+  Emoji were rejected as off-brand.
+- **How:** one generator in `docs/brand/tools/` draws about 55 forms in light and dark. Every
+  dictionary entry names its icon, with a fallback per category, then a basket. Pantry items gain
+  an additive `icon` field.
+- **Unchanged:** the icon is decoration only. Names stay the source of truth for matching, fit and
+  safety, and an icon never signals status.
+*Lives in:* `docs/product/briefs/018-ingredient-icons.md`.
+
 #31 · 2026-11-14 · **Recipes get real photos: creator uploads first, Pexels stock photos otherwise, with no "Example photo" label (brief 019).**
 - **Creator photo:** the recipe editor takes a finished-dish photo from the camera or library. It
   is downscaled and re-encoded as JPEG on the phone, which strips location metadata. It is
@@ -343,7 +355,18 @@ PRD §4.2 (P1) forward and amends #4 ("P0 social = feed/save/share only").
   (capture invariant); no image moderation beyond type and size for the pilot.
 *Lives in:* `docs/product/briefs/019-recipe-photos.md`.
 
-#32 · 2026-11-14 · **Servings are adjustable and carry into cooking (brief 020).** Implements PRD
+#32 · 2026-11-14 · **iOS CI runs once per stack, not once per PR.** The PM asked to speed up
+merging during active development.
+- **Rule:** `gh workflow run ios` runs once, on the top branch of a stacked series. When it is
+  green, the stack's iOS PRs merge in order. A lone iOS PR is a stack of one. If main is merged
+  into the stack, the run is repeated on the new top.
+- **Why not skip it:** local iOS builds are off while the Mac is short on RAM, so GitHub CI is
+  the only place iOS code is compiled before main. A broken main blocks every Umma session.
+- **Accepted risk:** a middle commit that doesn't build on its own, while the full stack does,
+  can land in main. The next push fixes it.
+*Lives in:* `CLAUDE.md` (Workflow and identity).
+
+#33 · 2026-11-14 · **Servings are adjustable and carry into cooking (brief 020).** Implements PRD
 §12.2's scaling rule.
 - **Dial:** the recipe page has a servings control stepping through whole servings 1 to 6,
   whatever the recipe's original is. Ingredient amounts rescale at once.
