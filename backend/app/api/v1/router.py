@@ -17,6 +17,7 @@ from app.api.v1 import (
     recipes,
     sessions,
     substitutions,
+    voice,
 )
 
 router = APIRouter(prefix="/v1")
@@ -35,3 +36,4 @@ router.include_router(ai.router)
 router.include_router(media.router)
 router.include_router(extractions.router)
 router.include_router(capture.router)
+router.include_router(voice.router)
