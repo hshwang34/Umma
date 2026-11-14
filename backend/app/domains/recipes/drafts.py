@@ -15,6 +15,8 @@ Invariants enforced here (CLAUDE.md):
   ``creator_reviewed`` (the creator approved them), refuses steps whose clip is still rendering
   or failed, attaches the used clips to the version and discards the draft's other clips.
   Deleting a draft deletes its unpublished clips; the source video is kept (DECISIONS #20).
+* Brief 019: publishing pins the draft's cover photo to the version the same way; an edit
+  draft starts with the latest version's cover.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import NotFound, StateConflict, ValidationError
 from app.db.models import DraftStatus, Recipe, RecipeDraft, RecipeVersion, User, Visibility
 from app.domains.capture.privacy import purge_transcript_for_draft
+from app.domains.media import covers
 from app.domains.media import service as media
 from app.domains.ownership import get_owned_or_404
 from app.domains.recipes.draft_schemas import (
@@ -209,6 +212,7 @@ def to_draft(row: RecipeDraft) -> Draft:
         validation=validate(content),
         created_at=row.created_at,
         updated_at=row.updated_at,
+        cover_media_id=row.cover_media_id,
         **content.model_dump(),
     )
 
@@ -223,6 +227,7 @@ def to_summary(row: RecipeDraft) -> DraftSummary:
         summary=content.summary,
         tags=content.tags,
         cover_image_url=content.cover_image_url,
+        cover_media_id=row.cover_media_id,
         servings=content.servings,
         prep_minutes=content.prep_minutes,
         cook_minutes=content.cook_minutes,
@@ -294,6 +299,7 @@ async def delete_draft(session: AsyncSession, user: User, draft_id: uuid.UUID) -
     row = await get_draft_row(session, user, draft_id)
     ensure_not_extracting(row)
     await media.discard_unpublished_clips(session, row.id)
+    await covers.discard_for_draft(session, row.id)
     await purge_transcript_for_draft(session, row.id)  # brief 014: discarded → transcript gone
     await session.delete(row)
     await session.flush()
@@ -457,6 +463,7 @@ async def publish(
     row.structured_draft_json = normalised
     verdict = validate(content)
     clip_ids = await _check_clips(session, user, row, content, verdict)
+    cover_id = await covers.publishable_cover(session, row)
     if not verdict.publishable:
         raise ValidationError(
             "Draft is not ready to publish",
@@ -502,6 +509,7 @@ async def publish(
         summary=normalised["summary"],
         tags=normalised["tags"],
         cover_image_url=normalised["cover_image_url"],
+        cover_media_id=cover_id,
     )
     session.add(version)
     await session.flush()
@@ -510,6 +518,7 @@ async def publish(
     recipe.summary = normalised["summary"]
     recipe.tags = normalised["tags"]
     recipe.cover_image_url = normalised["cover_image_url"]
+    recipe.cover_media_id = cover_id
     recipe.latest_version_id = version.id
     recipe.visibility = Visibility.PUBLIC
     recipe.published_at = recipe.published_at or datetime.now(UTC)
@@ -525,6 +534,9 @@ async def publish(
         version_id=version.id,
         clip_ids=clip_ids,
         source_media_id=content.extraction.source_media_id if content.extraction else None,
+    )
+    await covers.attach_on_publish(
+        session, draft_id=row.id, recipe_id=recipe.id, version_id=version.id, cover_id=cover_id
     )
     return PublishResult(
         recipe_id=recipe.id,
@@ -588,6 +600,7 @@ async def start_edit(session: AsyncSession, user: User, recipe_id: uuid.UUID) ->
         owner_user_id=user.id,
         recipe_id=recipe.id,
         structured_draft_json=normalise(content),
+        cover_media_id=version.cover_media_id,
         status=DraftStatus.EDITING,
     )
     try:

@@ -11,8 +11,10 @@ Per recipe ingredient:
   name ("chicken" for chicken thighs);
 * ``missing`` / ``optional_missing``: nothing compatible.
 
-``can_make`` is true only when every required ingredient is ``available`` (FIT-03); ``coverage``
-is for sorting only and never a promise. Candidate observations never reach this function.
+``can_make`` is true only when every required ingredient is ``available`` (FIT-03) and the key
+ingredient (``key_ingredient.py``, brief 017) is ``available``, which also means it was confirmed
+within ``STALE_AFTER``; ``coverage`` is for sorting only and never a promise.
+Candidate observations never reach this function.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.domains.matching.dictionary import IngredientDictionary, clean, singularize_word
+from app.domains.matching.key_ingredient import key_ingredient_ref
 from app.domains.matching.normalize import Normalized, alternatives, conjuncts, normalize
 from app.domains.matching.units import (
     canonical_unit,
@@ -56,6 +59,9 @@ class FitItem(BaseModel):
     pantry_item_id: uuid.UUID | None
     pantry_quantity: Amount | None
     conversion_note: str | None
+    is_key: bool = False
+    # When the matched pantry item was last confirmed; null when nothing matched.
+    last_confirmed_at: datetime | None = None
 
 
 class FitCounts(BaseModel):
@@ -72,6 +78,7 @@ class FitResult(BaseModel):
     counts: FitCounts
     items: list[FitItem]
     computed_at: datetime
+    key_ingredient_ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,7 +330,10 @@ def fit(
     pantry_items: Sequence[PantryEntry],
     dictionary: IngredientDictionary,
     now: datetime,
+    *,
+    title: str = "",
 ) -> FitResult:
+    key_ref = key_ingredient_ref(title, ingredients, dictionary)
     pantry: list[_Pantry] = []
     for item in pantry_items:
         norm = normalize(item.raw_label, dictionary)
@@ -335,6 +345,7 @@ def fit(
     items: list[FitItem] = []
     counts = FitCounts()
     required_total = required_available = 0
+    key_available = key_ref is None
     for ing in ingredients:
         status, reason, assessment = _evaluate_line(ing, pantry, dictionary, now)
 
@@ -342,6 +353,9 @@ def fit(
             required_total += 1
             required_available += status == "available"
         setattr(counts, status, getattr(counts, status) + 1)
+        is_key = ing.id == key_ref and not ing.optional and not any(i.is_key for i in items)
+        if is_key:
+            key_available = status == "available"
         items.append(
             FitItem(
                 ingredient_ref=ing.id,
@@ -353,15 +367,18 @@ def fit(
                 pantry_item_id=assessment.pantry.item.id if assessment else None,
                 pantry_quantity=_amount_of(assessment.pantry.item) if assessment else None,
                 conversion_note=assessment.note if assessment else None,
+                is_key=is_key,
+                last_confirmed_at=assessment.pantry.item.last_confirmed_at if assessment else None,
             )
         )
 
     coverage = 1.0 if required_total == 0 else required_available / required_total
     return FitResult(
         recipe_version_id=recipe_version_id,
-        can_make=required_available == required_total,
+        can_make=required_available == required_total and key_available,
         coverage=round(coverage, 4),
         counts=counts,
         items=items,
         computed_at=now,
+        key_ingredient_ref=key_ref,
     )
