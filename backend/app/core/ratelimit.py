@@ -120,8 +120,8 @@ class IpLimiter:
 
     * ``fine``: one bucket per caller (IPv4 address or IPv6 /64), ``limit`` per minute.
     * ``coarse``: one bucket per IPv4 /24 or IPv6 /48, ``limit * COARSE_FACTOR`` per minute,
-      in a smaller table. Every IPv6 request is counted here too (a cap per allocation), and
-      so is any new caller that arrives while ``fine`` is full of active keys.
+      in a smaller table. Every IPv6 request is counted here first (a cap per allocation),
+      and so is any new caller that arrives while ``fine`` is full of active keys.
     * ``overflow``: a single shared bucket, used only when ``coarse`` is full as well.
 
     Existing counters are never dropped while active, so a throttled caller stays throttled."""
@@ -143,16 +143,20 @@ class IpLimiter:
     def allow(self, key: str) -> bool:
         if self.limit <= 0:
             return True
+        if "/" in key:
+            # IPv6: the /48 cap comes first. A request it rejects never creates or touches a
+            # /64 entry, so one allocation cannot fill the fine table with distinct /64s.
+            if not self._wide(key):
+                return False
+            return self.fine.try_allow(key) is not False  # full table: the /48 cap stands in
         tracked = self.fine.try_allow(key)
-        if tracked is False:
-            return False
-        if tracked is True and "/" not in key:
-            return True  # IPv4 (or an unknown peer) with its own bucket
-        # IPv6: the per-/48 cap. Or the fine table is full: the coarse bucket stands in.
+        if tracked is None:
+            return self._wide(key)  # full table: the /24 bucket stands in
+        return tracked
+
+    def _wide(self, key: str) -> bool:
         wide = self.coarse.try_allow(_coarse(key))
-        if wide is None:
-            return self.overflow.allow(OVERFLOW_KEY)
-        return wide
+        return self.overflow.allow(OVERFLOW_KEY) if wide is None else wide
 
 
 @dataclass

@@ -158,6 +158,10 @@ reset on every deploy or restart.
   throttled stay throttled, and testers elsewhere are still served. In the very worst case
   (a flood from more than 4,000 networks at once) new testers share the overflow bucket and
   may see 429s until it eases; `fly logs` will show the spike.
+- **This is a first line of defence, sized for a ~100-tester beta on one web machine.** It
+  stops casual abuse and runaway clients; it is not DDoS protection. If the beta grows, or a
+  second web machine is added, the step up is a shared store for the counters (Redis/Upstash)
+  or rate limiting at Fly's edge.
 - "Costly" writes (AI, voice, receipts, live scan, capture, media upload and uploaded
   callbacks, publish, clip trim) are marked in code with `Depends(limit_costly)`; a test fails
   when a new write route is not classified.

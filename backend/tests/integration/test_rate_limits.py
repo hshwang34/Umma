@@ -141,6 +141,10 @@ def test_ipv6_is_capped_per_48_as_well_as_per_64() -> None:
     served = [limiter.allow(f"2001:db8:1:{n:x}::/64") for n in range(100)]
     assert sum(served) == 2 * COARSE_FACTOR
     assert served[: 2 * COARSE_FACTOR] == [True] * (2 * COARSE_FACTOR)
+    # Requests the /48 cap rejected created no /64 entries.
+    assert len(limiter.fine._hits) == 2 * COARSE_FACTOR
+    assert not limiter.allow("2001:db8:1:ffff::/64")
+    assert "2001:db8:1:ffff::/64" not in limiter.fine._hits
     # Another /48 is unaffected, and a single /64 still has its own smaller limit.
     assert limiter.allow("2001:db8:2:1::/64") and limiter.allow("2001:db8:2:1::/64")
     assert not limiter.allow("2001:db8:2:1::/64")
