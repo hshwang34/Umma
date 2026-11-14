@@ -85,7 +85,15 @@ the repo, a PR or a log.
 **Plain settings** already in `fly.toml` `[env]` (change them there, not as secrets):
 `ENVIRONMENT=prod`, `AUTH_MODE=apple` (dev sign-in does not exist in prod; the app refuses to
 start with `AUTH_MODE=dev`), `LOG_LEVEL`, `STORAGE_ENDPOINT_URL=https://t3.storage.dev`,
-`STORAGE_REGION=auto`, `STORAGE_ADDRESSING_STYLE=virtual`.
+`STORAGE_REGION=auto`, `STORAGE_ADDRESSING_STYLE=virtual`, `CLIENT_IP_HEADER=Fly-Client-IP`,
+and the four AI caps below.
+
+**Production start-up checks.** With `ENVIRONMENT=prod` the app (web, worker and the release
+command) refuses to start unless: `AUTH_MODE` is not `dev`; the storage keys are real and the
+endpoint is https; the four AI caps (`AI_USER_DAILY_CAP_USD`, `AI_USER_DAILY_LIVE_CAP_USD`,
+`AI_MONTH_SOFT_CAP_USD`, `AI_MONTH_HARD_CAP_USD`) are each **stated** and above zero (a default
+is not accepted); every rate limit is above zero; and `CLIENT_IP_HEADER` is set. A failed check
+shows in `fly logs` as a settings validation error naming the variable.
 
 **Settings with safe defaults** (set as secrets or in `[env]` only to change them):
 
@@ -95,6 +103,10 @@ start with `AUTH_MODE=dev`), `LOG_LEVEL`, `STORAGE_ENDPOINT_URL=https://t3.stora
 | `AI_USER_DAILY_CAP_USD` | `0.50` | Per-person AI spend per UTC day (DECISIONS #34). |
 | `AI_USER_DAILY_LIVE_CAP_USD` | `1.15` | Per-person live pantry scan allowance per UTC day. |
 | `AI_MONTH_SOFT_CAP_USD` / `AI_MONTH_HARD_CAP_USD` | `15` / `22` | App-wide monthly caps: soft turns video extraction off, hard sends everything to the demo path. |
+| `RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE` | `10` | Sign-in attempts per IP address per minute. |
+| `RATE_LIMIT_PER_IP_PER_MINUTE` | `600` | All requests per IP address per minute (carrier networks share addresses, so this is loose). |
+| `RATE_LIMIT_PER_USER_PER_MINUTE` | `300` | All requests per signed-in person per minute. |
+| `RATE_LIMIT_COSTLY_PER_USER_PER_MINUTE` | `60` | Writes on AI, media, capture and voice routes per person per minute. |
 | `AI_USER_VIDEO_EXTRACTIONS_PER_MONTH` | `5` | Creator video extractions per person per month. |
 | `STORAGE_BUCKET` | `umma-media` | Tigris bucket name. |
 | `APPLE_BUNDLE_ID` | `com.umma.ios` | Audience that Apple identity tokens must carry. |
@@ -124,6 +136,15 @@ curl -s https://umma-api.fly.dev/v1/health    # {"status":"ok",…}
 
 Keep **web at exactly 1 machine**: sign-in keys, voice limits and rate limits are held in that
 one process. Scaling web out needs a shared store first.
+
+**Rate limits and the caller's address.** Requests reach the app from Fly's proxy, so the
+socket address is the proxy's, not the tester's. Fly's proxy sets `Fly-Client-IP` itself
+(a caller cannot forge it), and `CLIENT_IP_HEADER=Fly-Client-IP` tells the app to use it for
+per-IP limits. `X-Forwarded-For` is never read. Without the setting every tester would share
+one per-IP budget, so the app refuses to start in prod when it is missing. If the backend ever
+moves behind a different proxy, change this to the header *that* proxy overwrites. Over a
+limit, the app answers 429 `RATE_LIMITED` and the phone can retry after a minute. Counters
+reset on every deploy or restart.
 
 Seed the catalogue (ingredient dictionary, substitution rules, the demo recipes and creators).
 Idempotent; re-run after any deploy that changes `fixtures/`:

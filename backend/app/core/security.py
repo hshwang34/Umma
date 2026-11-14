@@ -18,6 +18,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import ratelimit
 from app.core.config import Settings
 from app.core.errors import Unauthorized
 from app.db.engine import DbSession
@@ -98,6 +99,7 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
+    request: Request,
     session: DbSession,
     settings: SettingsDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
@@ -105,6 +107,8 @@ async def get_current_user(
     if credentials is None or credentials.scheme.lower() != TOKEN_TYPE:
         raise Unauthorized("Missing bearer token")
     user_id = verify_access_token(settings, credentials.credentials)
+    # Per-user request budget (brief 010), spent before the database is touched.
+    ratelimit.check_user(request, user_id)
     user = await users_service.get_by_id(session, user_id)
     if user is None:
         raise Unauthorized("Unknown user")
@@ -115,6 +119,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 async def get_optional_user(
+    request: Request,
     session: DbSession,
     settings: SettingsDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
@@ -123,7 +128,7 @@ async def get_optional_user(
     so a client with an expired token learns about it instead of silently losing ``saved``."""
     if credentials is None:
         return None
-    return await get_current_user(session, settings, credentials)
+    return await get_current_user(request, session, settings, credentials)
 
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]

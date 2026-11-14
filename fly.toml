@@ -21,6 +21,13 @@ primary_region = "iad"  # Ashburn, Virginia. Keep Neon and Tigris in the same US
   STORAGE_ENDPOINT_URL = "https://t3.storage.dev"
   STORAGE_REGION = "auto"
   STORAGE_ADDRESSING_STYLE = "virtual"
+  # Fly's proxy sets this header itself; per-IP rate limits key on it.
+  CLIENT_IP_HEADER = "Fly-Client-IP"
+  # AI cost guard (DECISIONS #18, #19, #34). The app refuses to start in prod without these.
+  AI_USER_DAILY_CAP_USD = "0.50"
+  AI_USER_DAILY_LIVE_CAP_USD = "1.15"
+  AI_MONTH_SOFT_CAP_USD = "15"
+  AI_MONTH_HARD_CAP_USD = "22"
 
 [processes]
   web = "uvicorn app.main:app --host 0.0.0.0 --port 8080"

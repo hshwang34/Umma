@@ -28,6 +28,11 @@ def test_fly_env_plus_required_secrets_is_a_valid_production_config() -> None:
     settings = _prod_settings()
     assert settings.environment == "prod"
     assert settings.auth_mode == "apple"
+    # Fly's proxy overwrites this header, so per-IP limits see the real caller (brief 010).
+    assert FLY["env"]["CLIENT_IP_HEADER"] == "Fly-Client-IP"
+    assert settings.client_ip_header == "Fly-Client-IP"
+    assert 0 < settings.ai_month_soft_cap_usd <= settings.ai_month_hard_cap_usd <= 25
+    assert settings.ai_user_daily_cap_usd == 0.5
 
 
 def test_fly_health_check_hits_a_real_route_and_dev_login_is_absent() -> None:

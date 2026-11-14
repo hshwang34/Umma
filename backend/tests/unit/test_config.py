@@ -12,7 +12,17 @@ GOOD_SECRET = "x" * MIN_JWT_SECRET_BYTES
 
 @pytest.fixture(autouse=True)
 def _no_ambient_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for key in ("JWT_SECRET", "AUTH_MODE", "ENVIRONMENT", "DEV_LOGIN_ECHO_CODE"):
+    for key in (
+        "JWT_SECRET",
+        "AUTH_MODE",
+        "ENVIRONMENT",
+        "DEV_LOGIN_ECHO_CODE",
+        "CLIENT_IP_HEADER",
+        "AI_USER_DAILY_CAP_USD",
+        "AI_USER_DAILY_LIVE_CAP_USD",
+        "AI_MONTH_SOFT_CAP_USD",
+        "AI_MONTH_HARD_CAP_USD",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -56,6 +66,12 @@ PROD_STORAGE = {
     "storage_endpoint_url": "https://t3.storage.dev",
     "storage_access_key_id": "tid_real_key",
     "storage_secret_access_key": "tsec_real_secret",
+    # Brief 010: prod states its AI caps and the proxy's client-IP header explicitly.
+    "ai_user_daily_cap_usd": 0.5,
+    "ai_user_daily_live_cap_usd": 1.15,
+    "ai_month_soft_cap_usd": 15,
+    "ai_month_hard_cap_usd": 22,
+    "client_ip_header": "Fly-Client-IP",
 }
 
 
@@ -88,6 +104,62 @@ def test_prod_refuses_dev_storage(override: dict[str, object], match: str) -> No
             auth_mode="apple",
             **{**PROD_STORAGE, **override},
         )
+
+
+def _prod(**override: object) -> Settings:
+    values = {**PROD_STORAGE, **override}
+    values = {key: value for key, value in values.items() if value is not ...}
+    return Settings(
+        _env_file=None, jwt_secret=GOOD_SECRET, environment="prod", auth_mode="apple", **values
+    )
+
+
+@pytest.mark.parametrize(
+    "cap",
+    [
+        "ai_user_daily_cap_usd",
+        "ai_user_daily_live_cap_usd",
+        "ai_month_soft_cap_usd",
+        "ai_month_hard_cap_usd",
+    ],
+)
+def test_prod_refuses_an_unset_or_zero_ai_cap(cap: str) -> None:
+    with pytest.raises(ValidationError, match=f"{cap.upper()} must be set above 0"):
+        _prod(**{cap: ...})  # left to its default: prod has to state it
+    # A zero hard cap is caught first by the older "soft must not exceed hard" rule.
+    with pytest.raises(ValidationError, match=r"must be set above 0|must not exceed"):
+        _prod(**{cap: 0})
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        "rate_limit_sign_in_per_ip_per_minute",
+        "rate_limit_per_ip_per_minute",
+        "rate_limit_per_user_per_minute",
+        "rate_limit_costly_per_user_per_minute",
+    ],
+)
+def test_prod_refuses_a_rate_limit_switched_off(limit: str) -> None:
+    with pytest.raises(ValidationError, match=f"{limit.upper()} must be above 0"):
+        _prod(**{limit: 0})
+
+
+@pytest.mark.parametrize("header", [..., None, ""])
+def test_prod_refuses_a_missing_client_ip_header(header: object) -> None:
+    with pytest.raises(ValidationError, match="CLIENT_IP_HEADER must be set in prod"):
+        _prod(client_ip_header=header)
+
+
+def test_dev_needs_no_caps_header_or_limits() -> None:
+    settings = Settings(
+        _env_file=None,
+        jwt_secret=GOOD_SECRET,
+        auth_mode="dev",
+        ai_user_daily_cap_usd=0,
+        rate_limit_per_ip_per_minute=0,
+    )
+    assert settings.client_ip_header is None
 
 
 @pytest.mark.parametrize("environment", ["dev", "prod"])

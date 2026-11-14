@@ -21,9 +21,10 @@ from app.api.v1 import (
     substitutions,
     voice,
 )
+from app.core.ratelimit import limit_ip
 from app.media.signing import bind_media_signer
 
-router = APIRouter(prefix="/v1", dependencies=[Depends(bind_media_signer)])
+router = APIRouter(prefix="/v1", dependencies=[Depends(limit_ip), Depends(bind_media_signer)])
 router.include_router(health.router)
 router.include_router(me.router)
 router.include_router(creators.router)
