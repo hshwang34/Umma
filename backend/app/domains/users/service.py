@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -117,8 +118,12 @@ async def get_or_create_by_subject(
     return candidate
 
 
-async def set_role(session: AsyncSession, user: User, role: str) -> User:
-    user.role = UserRole(role)
+async def update_profile(session: AsyncSession, user: User, changes: dict[str, Any]) -> User:
+    """Apply the ``PATCH /me`` fields that were sent (already validated by ``UserPatch``)."""
+    if "role" in changes:
+        user.role = UserRole(changes["role"])
+    if "default_servings" in changes:
+        user.default_servings = changes["default_servings"]
     await session.flush()
     return user
 

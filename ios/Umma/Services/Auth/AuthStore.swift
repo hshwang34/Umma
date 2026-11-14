@@ -110,6 +110,18 @@ final class AuthStore {
     /// leaves `pendingChallenge` in place so the user can retry; no session exists to tear down.
     func verify(challengeId: String, code: String) async throws {
         let response = try await api.verifyDevCode(challengeId: challengeId, code: code.trimmingCharacters(in: .whitespacesAndNewlines))
+        try startSession(response)
+    }
+
+    /// Sign in with Apple (brief 010). A token the server refuses throws `APIError.unauthorized`
+    /// and leaves the store signed out; no session exists to tear down.
+    func signInWithApple(_ credential: AppleSignIn.Credential, nonce: SignInNonce) async throws {
+        let response = try await api.signInWithApple(
+            identityToken: credential.identityToken, nonce: nonce.raw, displayName: credential.displayName)
+        try startSession(response)
+    }
+
+    private func startSession(_ response: AuthResponse) throws {
         if cachedUser()?.id != response.user.id {
             // A different account: nothing of the previous one's may survive.
             onCredentialsCleared?()
