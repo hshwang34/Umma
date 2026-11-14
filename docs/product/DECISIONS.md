@@ -365,3 +365,12 @@ merging during active development.
 - **Accepted risk:** a middle commit that doesn't build on its own, while the full stack does,
   can land in main. The next push fixes it.
 *Lives in:* `CLAUDE.md` (Workflow and identity).
+
+#34 · 2026-11-14 · **The per-user AI day cap is $0.50.**
+- **Cap:** `AI_USER_DAILY_CAP_USD` goes from $0.25 to $0.50 per person per UTC day. It is shared
+  by every interactive AI feature (coach, pantry, receipts, paid voice). Paid voice costs about
+  $0.02 per minute, so a cook gets about 24 minutes of conversation a day instead of 12.
+  The global monthly caps (#18, #19) are unchanged.
+- **Unchanged:** paid voice stays dark (`PAID_VOICE_ENABLED=false`) until the PM's go for the
+  first live call.
+*Lives in:* `backend/app/core/config.py`, `backend/app/ai/budget.py`.
