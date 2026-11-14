@@ -104,6 +104,13 @@ struct AppleSignInRequest: Encodable, Sendable {
     let displayName: String?
 }
 
+/// `POST /v1/auth/google` (brief 010). `nonce` is the raw value; Google's token carries its
+/// SHA-256. The server refuses any other field, and takes the name from the token itself.
+struct GoogleSignInRequest: Encodable, Sendable {
+    let idToken: String
+    let nonce: String
+}
+
 struct AuthResponse: Decodable, Sendable {
     let accessToken: String
     let tokenType: String
