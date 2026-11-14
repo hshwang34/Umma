@@ -27,7 +27,7 @@ final class FakeLiveScanBasketService: LiveScanBasketService, @unchecked Sendabl
     var finishHandler: @Sendable () throws -> LiveScanFinished = { LiveScanFinished(saved: [], review: []) }
 
     func createLiveScan(demo: Bool) async throws -> LiveScanCreated {
-        record(.create(demo: demo)); return try createHandler(demo)
+        record(.create(demo: demo)); await suspend?(.create(demo: demo)); return try createHandler(demo)
     }
     func addLiveScanItem(scanID: UUID, _ item: LiveScanItemReport) async throws -> LiveScanItemResult {
         record(.add(scanID, item)); await suspend?(.add(scanID, item)); return try addHandler(item)
@@ -57,12 +57,15 @@ final class FakeLiveScanTokenService: LiveScanService, @unchecked Sendable {
     /// `already_in_basket` of every request, in order.
     var requests: [[String]] { lock.withLock { _requests } }
     var handler: @Sendable (Int) throws -> LiveScanToken = { _ in LiveScanFixtures.token() }
+    /// Optional suspension per request (after it is recorded).
+    var suspend: (@Sendable () async -> Void)?
 
     func liveScanToken(alreadyInBasket: [String]) async throws -> LiveScanToken {
         let number = lock.withLock { () -> Int in
             _requests.append(alreadyInBasket)
             return _requests.count
         }
+        await suspend?()
         return try handler(number)
     }
 }
@@ -81,6 +84,23 @@ final class FakeLiveScanTransportFactory {
     }
 }
 
+/// A transport whose `close()` never ends `events` and never reports `.closed`.
+@MainActor
+final class StuckLiveScanTransport: LiveScanTransport {
+    let events: AsyncStream<LiveScanEvent>
+    private let continuation: AsyncStream<LiveScanEvent>.Continuation
+    private(set) var closeCount = 0
+
+    init() {
+        (events, continuation) = AsyncStream.makeStream(of: LiveScanEvent.self)
+    }
+
+    func connect(token: LiveScanToken) async throws {}
+    func send(frame jpeg: Data) {}
+    func respond(callID: String, name: String, status: String, canonical: String?) {}
+    func close() { closeCount += 1 }
+}
+
 @MainActor
 final class LiveScanViewModelTests: XCTestCase {
     private var camera: FakeFrameStreamingCameraSource!
@@ -88,6 +108,8 @@ final class LiveScanViewModelTests: XCTestCase {
     private var service: FakeLiveScanBasketService!
     private var factory: FakeLiveScanTransportFactory!
     private var frameSecond = 0.0
+    /// The model's monotonic clock, in seconds; tests move it by hand.
+    private var clock: TestBox<TimeInterval>!
 
     override func setUp() async throws {
         camera = FakeFrameStreamingCameraSource()
@@ -95,13 +117,16 @@ final class LiveScanViewModelTests: XCTestCase {
         service = FakeLiveScanBasketService()
         factory = FakeLiveScanTransportFactory()
         frameSecond = 0
+        clock = TestBox(1000)
     }
 
     private func makeModel() -> LiveScanViewModel {
         let transports = factory!
+        let clock = clock!
         return LiveScanViewModel(camera: camera, tokens: tokens, service: service,
                                  makeTransport: { transports.make($0) },
-                                 tickSleep: { try await Task.sleep(for: .seconds(3600)) })
+                                 tickSleep: { try await Task.sleep(for: .seconds(3600)) },
+                                 uptime: { clock.value })
     }
 
     private func waitUntil(_ what: String, file: StaticString = #filePath, line: UInt = #line,
@@ -306,6 +331,8 @@ final class LiveScanViewModelTests: XCTestCase {
         let model = makeModel()
         await model.start()
         await report("eggs", on: factory.made[0])
+        XCTAssertTrue(offerFrame())
+        await waitUntil("a frame on the first session") { factory.made[0].framesSent == 1 }
         factory.made[0].end(.sessionLimit)
         await waitUntil("the second session") { factory.made.count == 2 && factory.made[1].isOpen }
         XCTAssertEqual(model.phase, .scanning)
@@ -315,7 +342,7 @@ final class LiveScanViewModelTests: XCTestCase {
 
         XCTAssertTrue(offerFrame())
         await waitUntil("frames on the new session") { factory.made[1].framesSent == 1 }
-        XCTAssertEqual(factory.made[0].framesSent, 0)
+        XCTAssertEqual(factory.made[0].framesSent, 1, "a frame after rotation goes only to the new session")
         await report("rice", on: factory.made[1])
         XCTAssertEqual(model.basket.map(\.key), ["eggs", "rice"])
 
@@ -383,13 +410,38 @@ final class LiveScanViewModelTests: XCTestCase {
         XCTAssertEqual(service.createCalls.count, 1)
     }
 
+    func testAHealthySessionEarnsAnotherReconnect() async {
+        let model = makeModel()
+        await model.start()
+        factory.made[0].end(.connectionLost)
+        await waitUntil("the first reconnect") { factory.made.count == 2 && factory.made[1].isOpen }
+        // Open for 15 s: the next drop reconnects again.
+        clock.value += LiveScanViewModel.healthySessionSeconds
+        factory.made[1].end(.connectionLost)
+        await waitUntil("the second reconnect") { factory.made.count == 3 && factory.made[2].isOpen }
+        // An item is a sign of health too.
+        await report("eggs", on: factory.made[2])
+        factory.made[2].end(.server(code: 1011, reason: nil))
+        await waitUntil("the third reconnect") { factory.made.count == 4 && factory.made[3].isOpen }
+        XCTAssertEqual(model.phase, .scanning)
+        // A drop straight after a reconnect, with no item, ends the scan.
+        factory.made[3].end(.connectionLost)
+        await waitUntil("the interrupted state") { model.phase == .interrupted }
+        XCTAssertEqual(factory.made.count, 4)
+    }
+
     func testTheWindowStopsAt120SecondsAndKeepScanningStartsAnother() async {
         let model = makeModel()
         await model.start()
         await report("eggs", on: factory.made[0])
-        for _ in 0..<119 { await model.tick() }
+        clock.value += 119
+        await model.tick()
         XCTAssertEqual(model.secondsRemaining, 1)
         XCTAssertEqual(model.phase, .scanning)
+        clock.value += 0.5
+        await model.tick()
+        XCTAssertEqual(model.secondsRemaining, 1, "half a second left still shows 1")
+        clock.value += 0.5
         await model.tick()
         XCTAssertEqual(model.secondsRemaining, 0)
         XCTAssertEqual(model.phase, .timeUp)
@@ -397,8 +449,6 @@ final class LiveScanViewModelTests: XCTestCase {
         XCTAssertFalse(factory.made[0].isOpen)
         XCTAssertFalse(offerFrame(), "frames stop with the window")
         XCTAssertEqual(factory.made[0].framesSent, 0)
-        await model.tick()
-        XCTAssertEqual(model.secondsRemaining, 0)
 
         await model.continueScanning()
         XCTAssertEqual(model.phase, .scanning)
@@ -407,6 +457,26 @@ final class LiveScanViewModelTests: XCTestCase {
         XCTAssertEqual(factory.made.count, 2)
         XCTAssertEqual(service.createCalls.count, 1)
         XCTAssertEqual(tokens.requests.last, ["eggs"])
+
+        // One late tick ends the window at once: it can't stretch past 120 s.
+        clock.value += 500
+        await model.tick()
+        XCTAssertEqual(model.phase, .timeUp)
+        XCTAssertEqual(model.secondsRemaining, 0)
+    }
+
+    func testAStaleTickAfterStopChangesNothing() async {
+        let model = makeModel()
+        await model.start()
+        clock.value += 30
+        await model.tick()
+        XCTAssertEqual(model.secondsRemaining, 90)
+        await model.cancel()
+        clock.value += 500
+        await model.tick()
+        XCTAssertEqual(model.phase, .cancelled)
+        XCTAssertEqual(model.secondsRemaining, 90)
+        XCTAssertNil(model.message)
     }
 
     // MARK: - Finish, cancel
@@ -469,19 +539,165 @@ final class LiveScanViewModelTests: XCTestCase {
 
     func testAnItemThatLandsAfterStopIsIgnored() async {
         let latch = TestLatch()
-        service.suspend = { _ in await latch.wait() }
+        service.suspend = { call in
+            if case .add = call { await latch.wait() }
+        }
         let model = makeModel()
         await model.start()
         let transport = factory.made[0]
         transport.emit(.itemReported(callID: "late", name: "eggs", kind: nil, confidence: .high))
         await waitUntil("the add call") { service.calls.count == 2 }
+        let events = model.eventTask
+        XCTAssertNotNil(events)
         await model.cancel()
         await latch.open()
-        try? await Task.sleep(for: .milliseconds(50))
+        // The event task ends only after it has dealt with the late answer.
+        await events?.value
 
         XCTAssertTrue(model.basket.isEmpty)
         XCTAssertNil(model.cue)
         XCTAssertTrue(transport.responses.isEmpty)
         XCTAssertEqual(model.phase, .cancelled)
+        await model.remove(LiveScanBasketEntry(id: UUID(), key: "eggs", name: "eggs", confidence: .high))
+        XCTAssertTrue(service.removeCalls.isEmpty)
+    }
+
+    func testDoneWaitsForAnAddInFlight() async {
+        let latch = TestLatch()
+        service.suspend = { call in
+            if case .add = call { await latch.wait() }
+        }
+        let model = makeModel()
+        await model.start()
+        factory.made[0].emit(.itemReported(callID: "c", name: "eggs", kind: nil, confidence: .high))
+        await waitUntil("the add call") { service.calls.count == 2 }
+        let events = model.eventTask
+        let done = Task { await model.finish() }
+        await waitUntil("finishing") { model.phase == .finishing }
+        XCTAssertTrue(service.finishCalls.isEmpty, "finish waits for the add")
+        await latch.open()
+        await done.value
+        await events?.value
+
+        XCTAssertEqual(model.phase, .finished)
+        XCTAssertEqual(service.calls.count, 3)
+        XCTAssertEqual(service.calls.last, .finish(LiveScanBasketFixtures.scanID), "the add reached the server first")
+        XCTAssertTrue(factory.made[0].responses.isEmpty, "the closed session gets no answer")
+        let entry = LiveScanBasketEntry(id: UUID(), key: "eggs", name: "eggs", confidence: .high)
+        await model.remove(model.basket.first ?? entry)
+        XCTAssertTrue(service.removeCalls.isEmpty, "nothing is removed after Done")
+    }
+
+    func testCancelDuringTheTokenRequestLeavesNothingRunning() async {
+        let latch = TestLatch()
+        tokens.suspend = { await latch.wait() }
+        let model = makeModel()
+        let starting = Task { await model.start() }
+        await waitUntil("the token request") { tokens.requests.count == 1 }
+        await model.cancel()
+        await latch.open()
+        await starting.value
+
+        XCTAssertEqual(model.phase, .cancelled)
+        XCTAssertFalse(model.cameraOn)
+        XCTAssertTrue(service.calls.isEmpty, "no scan is created after a cancel")
+        XCTAssertTrue(factory.made.isEmpty)
+        XCTAssertNil(model.scanID)
+    }
+
+    func testCancelDuringCreateScanLeavesNothingRunning() async {
+        let latch = TestLatch()
+        service.suspend = { _ in await latch.wait() }
+        let model = makeModel()
+        let starting = Task { await model.start() }
+        await waitUntil("the create call") { service.calls == [.create(demo: false)] }
+        await model.cancel()
+        await latch.open()
+        await starting.value
+
+        XCTAssertEqual(model.phase, .cancelled)
+        XCTAssertFalse(model.cameraOn)
+        XCTAssertNil(model.scanID)
+        XCTAssertTrue(factory.made.isEmpty, "no session opens after a cancel")
+        XCTAssertFalse(offerFrame())
+    }
+
+    func testFinishReturnsWhenTheTransportNeverEndsItsEvents() async {
+        let stuck = StuckLiveScanTransport()
+        let clock = clock!
+        let model = LiveScanViewModel(camera: camera, tokens: tokens, service: service,
+                                      makeTransport: { _ in stuck },
+                                      tickSleep: { try await Task.sleep(for: .seconds(3600)) },
+                                      uptime: { clock.value })
+        await model.start()
+        XCTAssertEqual(model.phase, .scanning)
+        let events = model.eventTask
+        await model.finish()
+        XCTAssertEqual(model.phase, .finished)
+        XCTAssertEqual(stuck.closeCount, 1)
+        XCTAssertFalse(model.cameraOn)
+        await events?.value
+        XCTAssertNil(model.eventTask)
+    }
+
+    // MARK: - Scan-level and item-level failures
+
+    func testAFailedReRemoveShowsTheItemAgain() async throws {
+        let model = makeModel()
+        await model.start()
+        let transport = factory.made[0]
+        await report("eggs", on: transport)
+        await model.remove(try XCTUnwrap(model.basket.first))
+        XCTAssertTrue(model.basket.isEmpty)
+
+        // The model reports it again, and taking it back out of the server basket fails.
+        service.removeHandler = { _ in throw APIError.unreachable(baseURL: "http://x", underlying: "down") }
+        await report("eggs", on: transport)
+        XCTAssertEqual(model.basket.map(\.key), ["eggs"], "the server would save it, so the cook sees it")
+        XCTAssertEqual(model.message?.contains("Couldn’t remove eggs"), true)
+        XCTAssertEqual(transport.responses.last?.status, "new")
+        XCTAssertEqual(service.removeCalls, ["eggs", "eggs"])
+
+        // Not stuck: once the server answers, the cook can remove it for good.
+        service.removeHandler = { _ in }
+        await model.remove(try XCTUnwrap(model.basket.first))
+        await report("eggs", on: transport)
+        XCTAssertTrue(model.basket.isEmpty)
+        XCTAssertEqual(transport.responses.last?.status, "already_in_basket")
+    }
+
+    func testScanLevelAddErrorsStopTheScanAndItemLevelOnesDoNot() async {
+        func conflict(_ message: String) -> APIError {
+            .server(status: 409, code: "STATE_CONFLICT", message: message, retryable: false, correlationId: nil)
+        }
+        let gone = APIError.server(status: 404, code: "NOT_FOUND", message: "Live scan not found",
+                                   retryable: false, correlationId: nil)
+        for closed in [gone, conflict("This scan is finished"), APIError.unauthorized(message: nil, correlationId: nil)] {
+            factory = FakeLiveScanTransportFactory()
+            service = FakeLiveScanBasketService()
+            let model = makeModel()
+            await model.start()
+            let transport = factory.made[0]
+            await report("eggs", on: transport)
+            service.addHandler = { _ in throw closed }
+            await report("rice", on: transport)
+            XCTAssertEqual(transport.responses.map(\.status), ["new", "error"], "the model is still answered")
+            await waitUntil("the scan to stop") { model.phase == .interrupted }
+            XCTAssertEqual(model.message, LiveScanViewModel.scanClosedMessage)
+            XCTAssertEqual(model.basket.map(\.key), ["eggs"])
+            XCTAssertFalse(model.cameraOn)
+            XCTAssertFalse(transport.isOpen)
+            XCTAssertTrue(model.canFinish)
+        }
+
+        factory = FakeLiveScanTransportFactory()
+        service = FakeLiveScanBasketService()
+        service.addHandler = { _ in throw conflict("The basket is full; finish this scan and start another") }
+        let model = makeModel()
+        await model.start()
+        await report("eggs", on: factory.made[0])
+        XCTAssertEqual(factory.made[0].responses.map(\.status), ["ignored"])
+        XCTAssertEqual(model.phase, .scanning, "a full basket refuses the item, not the scan")
+        XCTAssertNil(model.message)
     }
 }

@@ -92,6 +92,11 @@ final class LiveScanViewModel {
     static let demoLabel = "Demo mode — not a real detection"
     static let limitMessage = "Today’s live scan allowance is used up. Tap Done to keep what you scanned, or add more by photo or voice."
     static let connectFailedMessage = "Couldn’t connect the live scan. Try again, or add items by photo or voice."
+    static let scanClosedMessage = "This scan can’t take more items. Tap Done to keep what you scanned."
+    /// A session that stayed open this long, or reported an item, was healthy.
+    static let healthySessionSeconds: TimeInterval = 15
+    /// How the server words a full basket (409 `STATE_CONFLICT`, same code as a finished scan).
+    static let basketFullPrefix = "The basket is full"
     static let connectionMessage = "The scan lost its connection. Your basket is kept."
 
     private(set) var phase: Phase = .idle
@@ -109,12 +114,22 @@ final class LiveScanViewModel {
     private let tokens: any LiveScanService
     private let service: any LiveScanBasketService
     private let makeTransport: @MainActor (LiveScanToken) -> any LiveScanTransport
-    /// One second of the countdown; tests inject a sleep that never fires and call `tick()`.
+    /// The pause between countdown updates; tests inject a sleep that never fires and call `tick()`.
     private let tickSleep: @Sendable () async throws -> Void
+    /// Monotonic seconds. The window's deadline and a session's age are read from it.
+    private let uptime: @Sendable () -> TimeInterval
 
     private var gate = CaptureStartGate()
     private var transport: (any LiveScanTransport)?
-    private var eventTask: Task<Void, Never>?
+    /// Drains the current session's events; tests await it.
+    private(set) var eventTask: Task<Void, Never>?
+    /// The rotation or reconnect in flight; tests await it.
+    private(set) var recoveryTask: Task<Void, Never>?
+    /// The add on its way to the server. It is not cancelled with the session, so Done can wait for it.
+    private var pendingAdd: Task<LiveScanItemResult, Error>?
+    /// When the current 2-minute window ends, on `uptime`.
+    private var deadline: TimeInterval?
+    private var sessionOpenedAt: TimeInterval = 0
     private var frameTask: Task<Void, Never>?
     private var timerTask: Task<Void, Never>?
     /// Keys the cook removed; a later report of the same item must never bring it back.
@@ -126,12 +141,14 @@ final class LiveScanViewModel {
          tokens: any LiveScanService,
          service: any LiveScanBasketService,
          makeTransport: @escaping @MainActor (LiveScanToken) -> any LiveScanTransport = { LiveScanTransports.make(for: $0) },
-         tickSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) }) {
+         tickSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) },
+         uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.camera = camera
         self.tokens = tokens
         self.service = service
         self.makeTransport = makeTransport
         self.tickSleep = tickSleep
+        self.uptime = uptime
     }
 
     /// Drives the visible "Scanning" indicator; read from the source, never assumed.
@@ -194,7 +211,7 @@ final class LiveScanViewModel {
         guard canFinish, let scanID else { return }
         await stop(.finishing)
         // Let an add that was already on its way to the server land before finishing.
-        await eventTask?.value
+        _ = await pendingAdd?.result
         do {
             let finished = try await service.finishLiveScan(scanID: scanID)
             guard phase == .finishing else { return }
@@ -217,6 +234,7 @@ final class LiveScanViewModel {
     }
 
     func remove(_ entry: LiveScanBasketEntry) async {
+        guard phase != .finishing, phase != .finished, phase != .cancelled else { return }
         guard let scanID, let index = basket.firstIndex(where: { $0.id == entry.id }) else { return }
         basket.remove(at: index)
         removedKeys.insert(entry.key)
@@ -228,14 +246,19 @@ final class LiveScanViewModel {
             if !basket.contains(where: { $0.key == entry.key }) {
                 basket.insert(entry, at: min(index, basket.count))
             }
-            message = "Couldn’t remove \(entry.name): \(error.pantryMessage)"
+            message = Self.removeFailedMessage(entry.name, error)
         }
     }
 
-    /// One second of the scan window. The timer calls it; tests call it directly.
+    private static func removeFailedMessage(_ name: String, _ error: Error) -> String {
+        "Couldn’t remove \(name): \(error.pantryMessage)"
+    }
+
+    /// Updates the countdown from the window's deadline, so a late tick can't stretch the window.
+    /// The timer calls it; tests call it directly. Does nothing once the scan stopped.
     func tick() async {
-        guard phase == .scanning, secondsRemaining > 0 else { return }
-        secondsRemaining -= 1
+        guard phase == .scanning, let deadline else { return }
+        secondsRemaining = max(0, Int((deadline - uptime()).rounded(.up)))
         if secondsRemaining == 0 { await stop(.timeUp) }
     }
 
@@ -255,6 +278,7 @@ final class LiveScanViewModel {
             transport.close()
             return
         }
+        sessionOpenedAt = uptime()
         let events = transport.events
         eventTask = Task { [weak self] in
             for await event in events {
@@ -271,9 +295,13 @@ final class LiveScanViewModel {
         }
     }
 
+    /// Never waits for the transport: both drains are cancelled, whether or not `close()` ends
+    /// the event stream.
     private func closeSession() {
         frameTask?.cancel()
         frameTask = nil
+        eventTask?.cancel()
+        eventTask = nil
         transport?.close()
         transport = nil
     }
@@ -291,6 +319,7 @@ final class LiveScanViewModel {
 
     private func startTimer() {
         timerTask?.cancel()
+        deadline = uptime() + TimeInterval(Self.scanSeconds)
         secondsRemaining = Self.scanSeconds
         timerTask = Task { [weak self, tickSleep] in
             while true {
@@ -304,28 +333,38 @@ final class LiveScanViewModel {
     private func handle(_ event: LiveScanEvent, run: Int) async {
         switch event {
         case .itemReported(let callID, let name, let kind, let confidence):
+            // A session that reports items is healthy: a later drop gets its own reconnect.
+            didAutoReconnect = false
             await report(callID: callID, name: name, kind: kind, confidence: confidence, run: run)
         case .goAway, .closed(.sessionLimit):
-            // The short session ran out: rotate. A healthy session earns a fresh reconnect.
+            // The short session ran out: rotate.
             didAutoReconnect = false
-            await reconnect(after: run)
+            reconnect(after: run)
         case .closed(.client):
             break
         case .closed, .error:
+            if uptime() - sessionOpenedAt >= Self.healthySessionSeconds { didAutoReconnect = false }
             guard !didAutoReconnect else {
                 await stop(.interrupted, Self.connectionMessage)
                 return
             }
             didAutoReconnect = true
-            await reconnect(after: run)
+            reconnect(after: run)
         }
     }
 
-    /// New token, new transport, same scan and basket. The countdown keeps running.
-    private func reconnect(after old: Int) async {
+    /// New token, new transport, same scan and basket. The countdown keeps running. The work runs
+    /// in its own task: closing the old session cancels the event task this is called from.
+    private func reconnect(after old: Int) {
         guard gate.isCurrent(old), phase == .scanning else { return }
         let run = gate.begin()
         closeSession()
+        recoveryTask = Task { [weak self] in
+            await self?.openNextSession(run: run)
+        }
+    }
+
+    private func openNextSession(run: Int) async {
         do {
             let token = try await tokens.liveScanToken(alreadyInBasket: knownNames)
             guard gate.isCurrent(run) else { return }
@@ -344,6 +383,31 @@ final class LiveScanViewModel {
         }
     }
 
+    private enum AddFailure {
+        /// This item is refused for good (not an ingredient, basket full). The scan goes on.
+        case refused
+        /// The scan itself can't take items any more (signed out, gone, finished).
+        case scanClosed
+        case transient
+    }
+
+    /// A full basket and a finished scan are both 409 `STATE_CONFLICT`; only the message differs.
+    /// Any 409 that isn't the full-basket message counts as the scan being closed.
+    private static func addFailure(_ error: Error) -> AddFailure {
+        guard let api = error as? APIError, let code = api.status else { return .transient }
+        switch code {
+        case 422:
+            return .refused
+        case 409:
+            if case .server(_, _, let text, _, _, _) = api, text.hasPrefix(basketFullPrefix) { return .refused }
+            return .scanClosed
+        case 401, 403, 404:
+            return .scanClosed
+        default:
+            return .transient
+        }
+    }
+
     /// Sends one reported item to the basket and always answers the model, so it never waits.
     private func report(callID: String, name: String, kind: String?, confidence: LiveScanConfidence, run: Int) async {
         guard let scanID else { return }
@@ -351,15 +415,32 @@ final class LiveScanViewModel {
         var canonical: String?
         var cueKind: LiveScanCue.Kind?
         var item: LiveScanItemResult?
+        var scanClosed = false
+        let reported = LiveScanItemReport(name: name, kind: kind, confidence: confidence)
+        // Its own task: stopping the session must not cancel a request the server may already hold.
+        let add = Task { [service] in
+            try await service.addLiveScanItem(scanID: scanID, reported)
+        }
+        pendingAdd = add
         do {
-            let out = try await service.addLiveScanItem(
-                scanID: scanID, LiveScanItemReport(name: name, kind: kind, confidence: confidence))
+            let out = try await add.value
             item = out
             canonical = out.canonicalName
-            switch out.status {
-            case .new where removedKeys.contains(out.key):
+            var removedAgain = false
+            if out.status == .new, removedKeys.contains(out.key) {
                 // The cook removed it during this scan: take it out again, never save it.
-                _ = try? await service.removeLiveScanItem(scanID: scanID, key: out.key)
+                do {
+                    try await service.removeLiveScanItem(scanID: scanID, key: out.key)
+                    removedAgain = true
+                } catch {
+                    // The server still holds it and would save it: show it again and say why.
+                    guard self.scanID == scanID else { return }
+                    removedKeys.remove(out.key)
+                    message = Self.removeFailedMessage(out.canonicalName, error)
+                }
+            }
+            switch out.status {
+            case .new where removedAgain:
                 status = LiveScanItemStatus.alreadyInBasket.rawValue
             case .new where !basket.contains(where: { $0.key == out.key }):
                 // The server holds it now, so the basket shows it even if the scan just stopped.
@@ -378,9 +459,11 @@ final class LiveScanViewModel {
                 status = "ignored"
             }
         } catch {
-            // A refusal (not an ingredient, basket full) is final; anything else is an error.
-            let code = (error as? APIError)?.status ?? 0
-            status = (400..<500).contains(code) && code != 429 ? "ignored" : "error"
+            switch Self.addFailure(error) {
+            case .refused: status = "ignored"
+            case .scanClosed: scanClosed = true
+            case .transient: break
+            }
         }
         // A stopped or rotated session gets no answer and no animation.
         guard gate.isCurrent(run) else { return }
@@ -389,5 +472,6 @@ final class LiveScanViewModel {
             cueCount += 1
             cue = LiveScanCue(id: cueCount, kind: cueKind, key: item.key, name: item.canonicalName)
         }
+        if scanClosed { await stop(.interrupted, Self.scanClosedMessage) }
     }
 }
