@@ -237,7 +237,7 @@ struct LiveScanView: View {
                     }
                 }
                 .animation(.snappy(duration: 0.25), value: model.basket)
-                Text("Tap ✕ to take something out. It won’t be saved.")
+                Text("Remove anything that’s wrong. It won’t be saved.")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.textSecondary)
             }

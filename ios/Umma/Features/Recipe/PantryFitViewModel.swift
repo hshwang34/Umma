@@ -181,7 +181,7 @@ struct FitSection: Identifiable, Equatable {
 }
 
 /// Pantry fit (PRD §6, J3 steps 1–3, FIT-01..03). The headline never claims more than the
-/// server's classification: "Can make it" appears only when `can_make` is true and no required
+/// server's classification: "You can make this" appears only when `can_make` is true and no required
 /// ingredient is uncertain or missing.
 @MainActor
 @Observable
@@ -302,7 +302,7 @@ final class PantryFitViewModel {
 
     var headline: String? {
         guard fit != nil else { return nil }
-        if canMake { return "Can make it" }
+        if canMake { return "You can make this" }
         if missingCount > 0 { return "You’re missing \(missingCount)" }
         if uncertainCount > 0 { return uncertainCount == 1 ? "Check 1 item" : "Check \(uncertainCount) items" }
         // Server said no but every required row is available (shouldn't happen): stay cautious.

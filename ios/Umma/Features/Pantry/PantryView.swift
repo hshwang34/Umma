@@ -153,7 +153,7 @@ struct PantryView: View {
                 EmptyStateView(
                     systemImage: "basket",
                     title: "Your pantry is empty",
-                    message: "Add what you have, say it, or scan a shelf. Umma then tells you what a recipe still needs.",
+                    message: "Type, say or scan what you have. Umma shows what each recipe still needs.",
                     primary: EmptyStateView.Action("Add pantry item") { openAdd() },
                     secondary: EmptyStateView.Action("Try the demo recipe") {
                         environment.selectedTab = .explore
@@ -230,7 +230,7 @@ struct PantryView: View {
                     .accessibilityAction(named: "Still have it") { Task { await model.confirmStillHave(id: row.id) } }
                 }
             } footer: {
-                Text("Tap an item to edit it. Swipe left to delete, right for “Still have it”.")
+                Text("Swipe right on an item to say you still have it.")
                     .font(SLFont.footnote)
             }
         }
@@ -247,7 +247,7 @@ struct PantryView: View {
             }
             Button("Keep", role: .cancel) {}
         } message: { _ in
-            Text("It’s removed from your pantry. Recipes will no longer count it.")
+            Text("Recipes will stop counting it.")
         }
     }
 }

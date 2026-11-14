@@ -84,7 +84,7 @@ struct ShoppingListView: View {
                         .disabled(model.busyIds.contains(row.id))
                         .opacity(model.busyIds.contains(row.id) ? 0.5 : 1)
                         .accessibilityLabel(row.accessibilityLabel)
-                        .accessibilityHint(row.isChecked ? "Untick" : "Tick off")
+                        .accessibilityHint(row.isChecked ? "Puts it back on the list" : "Crosses it off")
                         .accessibilityAddTraits(row.isChecked ? .isSelected : [])
                         .accessibilityIdentifier("shopping.row")
                         .swipeActions(edge: .trailing) {
@@ -96,7 +96,7 @@ struct ShoppingListView: View {
                         }
                     }
                 } footer: {
-                    Text("Tap to tick an item off. Swipe left to delete it. A grocery receipt ticks off what you bought.")
+                    Text("Scan a grocery receipt in Pantry to cross off what you bought.")
                 }
             }
         }

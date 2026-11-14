@@ -99,7 +99,7 @@ final class ReceiptTests: XCTestCase {
     func testBannerSaysWhatWasAddedAndWhatWasNotRead() throws {
         let banner = ReceiptBannerPresentation(try ReceiptFixtures.result())
         XCTAssertEqual(banner.title, "Added 1 item from your receipt")
-        XCTAssertEqual(banner.details, ["1 item you already had was refreshed", "Ticked 1 item off your shopping list", "2 lines not read"])
+        XCTAssertEqual(banner.details, ["1 item you already had was refreshed", "Crossed 1 item off your shopping list", "2 lines not read"])
         XCTAssertEqual(banner.skippedLines, ["CHKN THGH BNLS", "??? 2.99"])
         XCTAssertNil(banner.moreSkippedText)
         XCTAssertEqual(banner.undoReceiptId, ReceiptFixtures.receiptId)

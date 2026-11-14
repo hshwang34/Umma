@@ -40,8 +40,8 @@ struct ReceiptBannerPresentation: Equatable {
                                                          : "\(result.merged.count) items you already had were refreshed")
             }
             if !result.shoppingChecked.isEmpty {
-                details.append(result.shoppingChecked.count == 1 ? "Ticked 1 item off your shopping list"
-                                                                  : "Ticked \(result.shoppingChecked.count) items off your shopping list")
+                details.append(result.shoppingChecked.count == 1 ? "Crossed 1 item off your shopping list"
+                                                                  : "Crossed \(result.shoppingChecked.count) items off your shopping list")
             }
             undoReceiptId = result.receiptId
         }

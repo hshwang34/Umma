@@ -14,7 +14,7 @@ struct ScanReviewView: View {
                         VStack(alignment: .leading, spacing: Spacing.xxs) {
                             Text("Demo mode — not a real detection")
                                 .font(SLFont.headline)
-                            Text("These items come from a fixed sample, not from your photo, so none are ticked. Tick only what you really have.")
+                            Text("These items come from a fixed sample, not from your photo, so none are selected. Select only what you really have.")
                                 .font(SLFont.footnote)
                         }
                     } icon: {
@@ -38,7 +38,7 @@ struct ScanReviewView: View {
             } header: {
                 Text(model.sourceLabel)
             } footer: {
-                Text("“Likely”, “Maybe” and “Not sure” are rough estimates, not guarantees. Untick anything that’s wrong; unticked items are not added.")
+                Text("“Likely”, “Maybe” and “Not sure” are rough estimates. Deselect anything that’s wrong and it won’t be added.")
             }
 
             if !model.unknowns.isEmpty {

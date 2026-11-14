@@ -52,7 +52,7 @@ struct ReviewRow: Identifiable, Equatable {
 
     var problem: String? {
         guard accepted else { return nil }
-        if cleanName.isEmpty { return "Add a name or untick this item." }
+        if cleanName.isEmpty { return "Add a name, or deselect this item." }
         if quantity == .invalid { return "Quantity must be a number greater than 0." }
         return nil
     }
@@ -126,7 +126,7 @@ final class ScanReviewViewModel {
     /// Why Confirm is disabled, if it is.
     var blockingMessage: String? {
         let accepted = acceptedRows
-        if accepted.isEmpty { return "Tick at least one item to add." }
+        if accepted.isEmpty { return "Select at least one item to add." }
         let undecided = accepted.filter(\.needsDuplicateChoice).count
         if undecided > 0 {
             return undecided == 1
@@ -253,7 +253,7 @@ final class ScanReviewViewModel {
             affected += 1
         }
         if affected == 0 {
-            error = "Some items are already in your pantry, but the server didn’t say which. Nothing was added."
+            error = "Some of these are already in your pantry, but Umma couldn’t tell which. Nothing was added."
         } else {
             conflictMessage = affected == 1
                 ? "1 item is already in your pantry. Choose Merge or Keep both, then add again."
