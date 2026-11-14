@@ -5,6 +5,8 @@
   JPEG magic bytes. Anything else is ``rejected`` and its object queued for deletion.
 * A draft holds at most one confirmed cover (``recipe_drafts.cover_media_id``). Replacing or
   removing it deletes the old one unless a published version already uses it.
+* Publishing pins the cover to the new version (first version wins, like step clips); a pinned
+  cover is immutable and kept with its version.
 * Abuse caps: at most ``cover_max_pending_uploads`` unconfirmed covers per user, and the bytes
   count toward the shared monthly upload budget.
 """
@@ -230,7 +232,42 @@ async def _discard_unpublished(session: AsyncSession, ids: list[uuid.UUID]) -> N
     )
 
 
-# --- Draft lifecycle hook (called from domains.recipes.drafts) -------------------------------
+# --- Draft lifecycle hooks (called from domains.recipes.drafts) ------------------------------
+
+
+async def publishable_cover(session: AsyncSession, draft: RecipeDraft) -> uuid.UUID | None:
+    """The cover the next version pins: the draft's ready cover, if it is this draft's own
+    upload or already published in this recipe. Anything else is dropped, never re-exposed."""
+    if draft.cover_media_id is None:
+        return None
+    row = await session.get(RecipeMedia, draft.cover_media_id)
+    if row is None or row.owner_user_id != draft.owner_user_id or row.status != "ready":
+        return None
+    own_upload = row.version_id is None and row.draft_id == draft.id
+    same_recipe = (
+        row.version_id is not None
+        and draft.recipe_id is not None
+        and row.recipe_id == draft.recipe_id
+    )
+    return row.id if own_upload or same_recipe else None
+
+
+async def attach_on_publish(
+    session: AsyncSession,
+    *,
+    draft_id: uuid.UUID,
+    recipe_id: uuid.UUID,
+    version_id: uuid.UUID,
+    cover_id: uuid.UUID | None,
+) -> None:
+    """Pin the cover to its first version; discard the draft's other unpublished covers."""
+    if cover_id is not None:
+        row = await session.get(RecipeMedia, cover_id)
+        if row is not None and row.version_id is None:
+            row.version_id = version_id
+            row.recipe_id = recipe_id
+    await discard_for_draft(session, draft_id, keep=cover_id)
+    await session.flush()
 
 
 async def discard_for_draft(
