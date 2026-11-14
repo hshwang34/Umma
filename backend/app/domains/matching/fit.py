@@ -79,6 +79,8 @@ class FitResult(BaseModel):
     items: list[FitItem]
     computed_at: datetime
     key_ingredient_ref: str | None = None
+    # Brief 020: the servings the required amounts are for. Set by the fit endpoint.
+    servings: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
