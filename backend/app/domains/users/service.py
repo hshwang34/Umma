@@ -68,6 +68,56 @@ async def get_or_create_by_email(
     return candidate
 
 
+APPLE_RELAY_DOMAIN = "@privaterelay.appleid.com"
+DEFAULT_DISPLAY_NAME = "Cook"
+
+
+async def _email_in_use(session: AsyncSession, email: str) -> bool:
+    result = await session.execute(select(User.id).where(User.email == email))
+    return result.first() is not None
+
+
+async def get_or_create_by_subject(
+    session: AsyncSession,
+    *,
+    auth_provider: str,
+    subject: str,
+    email: str | None,
+    display_name: str | None,
+) -> User:
+    """Find-or-create keyed by the provider's stable subject (Sign in with Apple, brief 010).
+
+    The email is informational: if another account already holds it, the new row stores none
+    instead of failing or merging accounts. A concurrent first sign-in loses the unique
+    constraint inside a SAVEPOINT and adopts the winner's row.
+    """
+    user = await find_by_subject(session, auth_provider=auth_provider, subject=subject)
+    if user is not None:
+        return user
+    if email is not None and await _email_in_use(session, email):
+        email = None
+    name = (display_name or "").strip()
+    if not name and email and not email.endswith(APPLE_RELAY_DOMAIN):
+        name = display_name_from_email(email)
+    candidate = User(
+        id=uuid.uuid4(),
+        auth_provider=auth_provider,
+        auth_subject=subject,
+        email=email,
+        display_name=(name or DEFAULT_DISPLAY_NAME)[:120],
+    )
+    try:
+        async with session.begin_nested():
+            session.add(candidate)
+            await session.flush()
+    except IntegrityError:
+        user = await find_by_subject(session, auth_provider=auth_provider, subject=subject)
+        if user is None:
+            raise
+        return user
+    return candidate
+
+
 async def update_profile(session: AsyncSession, user: User, changes: dict[str, Any]) -> User:
     """Apply the ``PATCH /me`` fields that were sent (already validated by ``UserPatch``)."""
     if "role" in changes:

@@ -14,6 +14,7 @@ from app.ai.live_pantry import build_live_minter
 from app.ai.providers.mock import MockAIProvider
 from app.ai.registry import build_provider
 from app.api.v1 import auth as auth_router
+from app.api.v1 import auth_apple as auth_apple_router
 from app.api.v1.router import router as v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -21,6 +22,7 @@ from app.core.logging import CorrelationIdMiddleware, configure_logging
 from app.core.security import DevAuthProvider
 from app.db.engine import make_engine, make_sessionmaker
 from app.domains.recipes import stock_photos
+from app.domains.users.apple import AppleIdentityVerifier, http_key_fetcher
 from app.media.storage import build_storage
 from app.voice.registry import build_stt, build_tts
 from app.voice.speak import SpeakLimiter
@@ -93,6 +95,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The dev-login route is only mounted in dev mode; outside it the path does not exist.
         app.state.auth_provider = DevAuthProvider()
         app.include_router(auth_router.router, prefix="/v1")
+    else:
+        # Sign in with Apple (brief 010). Apple's keys are fetched on the first sign-in.
+        app.state.apple_verifier = AppleIdentityVerifier(
+            audience=settings.apple_bundle_id,
+            fetch_keys=http_key_fetcher(settings.apple_keys_url),
+        )
+        app.include_router(auth_apple_router.router, prefix="/v1")
     return app
 
 
