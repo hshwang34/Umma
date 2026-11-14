@@ -68,5 +68,5 @@ async def test_speech_out_reserves_the_full_text(
     await guard.settle(reservation, meter, "ok")
     row = (await db_session.execute(select(AIUsage))).scalar_one()
     assert (row.capability, row.output_tokens, row.cost_usd) == ("voice_tts", 500, Decimal("0.02"))
-    big = await reserve_speech_out(guard, user_id, "elevenlabs/eleven_flash_v2_5", "x" * 10_000)
+    big = await reserve_speech_out(guard, user_id, "elevenlabs/eleven_flash_v2_5", "x" * 20_000)
     assert big == Denial("user_daily_cap")

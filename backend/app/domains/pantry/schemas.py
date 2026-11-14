@@ -315,3 +315,5 @@ class ReceiptResult(BaseModel):
     merged: list[PantryItemOut] = []
     skipped: list[ReceiptSkipped] = []
     would_add: list[ReceiptWouldAdd] = []  # demo only
+    # Open shopping-list items this receipt ticked off; empty on a duplicate and on a demo.
+    shopping_checked: list[str] = []

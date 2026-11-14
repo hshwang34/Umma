@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     jwt_ttl_days: int = 30
 
     auth_mode: Literal["dev", "apple"]
+    # Sign in with Apple (brief 010): identity tokens must be issued for this bundle id.
+    apple_bundle_id: str = "com.umma.ios"
+    apple_keys_url: str = "https://appleid.apple.com/auth/keys"
     dev_login_echo_code: bool = False
     # Brute-force budget for the dev sign-in code (per email, across challenges).
     dev_login_cooldown_seconds: int = 30
@@ -84,7 +87,7 @@ class Settings(BaseSettings):
 
     # Cost guard (DECISIONS #18/#19): per-user UTC-day cap, then the global UTC-month soft
     # degrade (video extraction off) and hard stop (labelled mock fallback for everything).
-    ai_user_daily_cap_usd: float = Field(default=0.25, ge=0)
+    ai_user_daily_cap_usd: float = Field(default=0.50, ge=0)
     # Live pantry scan's own per-user UTC-day allowance (brief 016, PM 2026-11-13): 2 full
     # scans ≈ 8 sessions x $0.141. Live spend is outside the cap above, inside the monthly caps.
     ai_user_daily_live_cap_usd: float = Field(default=1.15, ge=0)
@@ -202,6 +205,8 @@ class Settings(BaseSettings):
             )
         if self.auth_mode == "dev" and self.environment not in ("dev", "test"):
             raise ValueError("AUTH_MODE=dev is only allowed when ENVIRONMENT is dev or test")
+        if not self.apple_keys_url.startswith("https://"):
+            raise ValueError("APPLE_KEYS_URL must be https://")
         if self.ai_month_soft_cap_usd > self.ai_month_hard_cap_usd:
             raise ValueError("AI_MONTH_SOFT_CAP_USD must not exceed AI_MONTH_HARD_CAP_USD")
         if self.live_token_start_seconds > self.live_token_ttl_seconds:

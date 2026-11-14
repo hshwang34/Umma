@@ -121,7 +121,11 @@ async def test_saves_only_food_dictionary_high_confidence_lines(
     theirs = await pantry(client, other)  # another user's pantry is untouched
     assert (theirs["milk"]["quantity"], theirs["milk"]["source"]) == (1.0, "manual")
     (stored,) = await receipt_rows(engine)
-    assert stored["undo"] == {"created": [i["id"] for i in body["added"]], "merged": []}
+    assert stored["undo"] == {
+        "created": [i["id"] for i in body["added"]],
+        "merged": [],
+        "shopping_checked": [],
+    }
 
 
 KEPT = ("source", "confidence", "quantity_is_estimate", "storage_location", "note")
@@ -316,3 +320,71 @@ async def test_upload_rules(client: AsyncClient, engine: AsyncEngine) -> None:
     assert (await client.post(URL, files={"image": ("a.jpg", JPEG)})).status_code == 401
     async with engine.connect() as conn:
         assert await conn.scalar(select(func.count()).select_from(PantryReceipt)) == 0
+
+
+# --- brief 017 PR 6: a receipt ticks off the shopping list --------------------------------------
+
+SHOPPING = "/v1/shopping-list"
+
+
+async def shopping(client: AsyncClient, h: dict[str, str]) -> dict[str, str | None]:
+    """{normalised name: who ticked it, or None while open}; open items only once each."""
+    items = (await client.get(SHOPPING, headers=h)).json()["items"]
+    return {i["normalized_name"]: i["checked_by"] for i in reversed(items)}
+
+
+async def want(client: AsyncClient, h: dict[str, str], *names: str) -> None:
+    for name in names:
+        res = await client.post(SHOPPING, json={"name": name}, headers=h)
+        assert res.status_code == 201, res.text
+
+
+async def test_receipt_ticks_off_matching_shopping_items(
+    app: FastAPI, client: AsyncClient, engine: AsyncEngine
+) -> None:
+    h = await bearer(client, "cook@example.com")
+    other = await bearer(client, "other@example.com")
+    await stock(client, h, {"raw_label": "eggs", "quantity": 2})
+    await want(client, h, "Milk", "eggs", "butter", "xylofruit", "paper towels")
+    await want(client, other, "milk")
+    app.state.ai_provider = StubReader(
+        receipt(
+            food("whole milk", "ORG WHOLE MILK"),  # added
+            food("egg", "LRG EGGS 12CT"),  # merged into the pantry's eggs
+            food("butter", "KS SLT BTR", confidence=0.62),  # skipped: not read for sure
+            food("xylofruit", "XYLOFRUIT 2PK"),  # skipped: not in the dictionary
+        )
+    )
+    body = (await upload(client, h)).json()
+    assert [i["normalized_name"] for i in body["added"]] == ["milk"]
+    assert [i["normalized_name"] for i in body["merged"]] == ["egg"]
+    assert body["shopping_checked"] == ["eggs", "Milk"]
+    (stored,) = await receipt_rows(engine)
+    ticked = {i["id"] for i in (await client.get(SHOPPING, headers=h)).json()["items"][-2:]}
+    assert set(stored["undo"]["shopping_checked"]) == ticked  # what an undo would reopen
+    assert await shopping(client, h) == {
+        "milk": "receipt",
+        "egg": "receipt",
+        "butter": None,
+        "xylofruit": None,
+        "paper towel": None,
+    }
+    assert await shopping(client, other) == {"milk": None}  # another cook's list is untouched
+
+    # The same receipt again ticks nothing, even with milk back on the list.
+    await want(client, h, "milk")
+    again = (await upload(client, h)).json()
+    assert (again["duplicate"], again["shopping_checked"]) == (True, [])
+    assert (await shopping(client, h))["milk"] is None
+
+
+async def test_demo_and_unsaved_receipts_tick_nothing(app: FastAPI, client: AsyncClient) -> None:
+    h = await bearer(client, "cook@example.com")
+    await want(client, h, "milk", "butter")
+    app.state.ai_provider = StubReader(receipt(food("whole milk", "ORG WHOLE MILK"), demo=True))
+    demo = (await upload(client, h)).json()
+    assert (demo["demo"], demo["shopping_checked"]) == (True, [])
+    app.state.ai_provider = StubReader(receipt(food("butter", "KS SLT BTR", confidence=0.4)))
+    unread = (await upload(client, h)).json()
+    assert (unread["receipt_id"], unread["shopping_checked"]) == (None, [])
+    assert await shopping(client, h) == {"milk": None, "butter": None}

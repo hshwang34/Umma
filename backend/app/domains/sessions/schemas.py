@@ -198,6 +198,9 @@ class SessionOut(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     updated_at: datetime
+    # Set only in the response to the ``complete`` command (and its replay): the ingredients
+    # that completion put on the shopping list. Empty on every other read.
+    shopping_added: list[str] = []
 
 
 class SessionSummary(BaseModel):

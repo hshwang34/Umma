@@ -380,6 +380,32 @@ merging during active development.
 - **App record:** "Umma Cooks", Apple ID 6834884703, bundle ID `com.umma.ios`, SKU `umma-ios-001`.
 *Lives in:* `docs/product/briefs/010-slice7-release-testflight.md`.
 
+#34 · 2026-11-14 · **The per-user AI day cap is $0.50.**
+- **Cap:** `AI_USER_DAILY_CAP_USD` goes from $0.25 to $0.50 per person per UTC day. It is shared
+  by every interactive AI feature (coach, pantry, receipts, paid voice). Paid voice costs about
+  $0.02 per minute, so a cook gets about 24 minutes of conversation a day instead of 12.
+  The global monthly caps (#18, #19) are unchanged.
+- **Unchanged:** paid voice stays dark (`PAID_VOICE_ENABLED=false`) until the PM's go for the
+  first live call.
+*Lives in:* `backend/app/core/config.py`, `backend/app/ai/budget.py`.
+
+#35 · 2026-11-14 · **Servings are adjustable and carry into cooking (brief 020).** Implements PRD
+§12.2's scaling rule.
+- **Dial:** the recipe page has a servings control stepping through whole servings 1 to 6,
+  whatever the recipe's original is. Ingredient amounts rescale at once.
+- **Carried into cooking:** the chosen servings are stored on the cooking session and used for
+  the cook screen, pantry fit and the coach. Servings are locked once cooking starts.
+- **Default:** Profile gets a Default servings setting. It is off ("Recipe's own") until the
+  cook sets it; once set, every recipe opens scaled to it and can still be changed per recipe.
+- **Not scaled:** cooking times, pan sizes, step text and "to taste" ingredients. A notice says
+  so whenever amounts are scaled.
+- **Unchanged:** published recipe versions stay immutable. Scaling is the cook's view and
+  session only.
+- **Recipes for more than 6:** the recipe's original is one extra stop after 6 (1–6, then 8),
+  and the recipe opens at its original unless a default is set. The creator's amounts can
+  always be shown.
+*Lives in:* `docs/product/briefs/020-adjustable-servings.md`.
+
 #36 · 2026-11-13 · **Product site domain: `ummacooks.app`, auto-deployed from `main`.** Supersedes
 the free-domain line of #20: `umma.vercel.app` and `umma-site.vercel.app` were already taken.
 - **Domain:** the PM bought `ummacooks.app` on Vercel `hshwang34` ($9.99 first year, then $15/yr).
