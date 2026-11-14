@@ -12,6 +12,8 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
     case photo
     /// Written only by the server when a live scan finishes (brief 016). Never sent.
     case live
+    /// Written only by the server when a receipt is read (brief 017). Never sent.
+    case receipt
     /// Anything the server sends that this build doesn't know. Shown neutrally, never sent.
     case other
 
@@ -27,6 +29,7 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
         case .voice: return "Voice"
         case .photo: return "Photo"
         case .live: return "Auto-added"
+        case .receipt: return "From receipt"
         case .other: return "Other"
         }
     }
@@ -37,6 +40,7 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
         case .voice: return "mic"
         case .photo: return "camera"
         case .live: return "sparkles"
+        case .receipt: return "scroll"
         case .other: return "questionmark.circle"
         }
     }

@@ -19,13 +19,19 @@ final class PantryViewModel {
     /// Rows with a request in flight (their buttons are disabled).
     private(set) var busyItemIds: Set<UUID> = []
 
+    /// Brief 017: what the last receipt did, with Undo while it can still be taken back.
+    private(set) var receiptBanner: ReceiptBannerPresentation?
+    private(set) var isUndoingReceipt = false
+
     private let service: PantryService
+    private let receipts: ReceiptService?
     private let now: @MainActor () -> Date
     /// Fired after any confirmed server write, so other screens (recipe fit) can refresh.
     var onChanged: (@MainActor () -> Void)?
 
-    init(service: PantryService, now: @escaping @MainActor () -> Date = { Date() }) {
+    init(service: PantryService, receipts: ReceiptService? = nil, now: @escaping @MainActor () -> Date = { Date() }) {
         self.service = service
+        self.receipts = receipts
         self.now = now
     }
 
@@ -103,6 +109,43 @@ final class PantryViewModel {
     }
 
     func clearActionError() { actionError = nil }
+
+    // MARK: Receipts (brief 017)
+
+    /// The server has already saved the receipt's items; show them and say what happened.
+    func noteReceipt(_ result: ReceiptResult) {
+        receiptBanner = ReceiptBannerPresentation(result)
+        let changed = result.added + result.merged
+        guard !changed.isEmpty, !result.duplicate, !result.demo else { return }
+        apply(changed)
+        onChanged?()
+    }
+
+    func dismissReceiptBanner() {
+        guard !isUndoingReceipt else { return }
+        receiptBanner = nil
+    }
+
+    /// Whole-receipt Undo, on the cook's tap only. The list is re-read afterwards: the server
+    /// decides which items go and which were changed since and stay.
+    func undoReceipt() async {
+        guard let receipts, let id = receiptBanner?.undoReceiptId, !isUndoingReceipt else { return }
+        isUndoingReceipt = true
+        actionError = nil
+        defer { isUndoingReceipt = false }
+        do {
+            let undone = try await receipts.undoReceipt(id: id)
+            receiptBanner = ReceiptBannerPresentation(undone: undone)
+            onChanged?()
+            await load()
+        } catch let error as APIError where error.isNotFound {
+            receiptBanner = nil
+            actionError = "That receipt was already undone."
+            await load()
+        } catch {
+            actionError = "Couldn’t undo the receipt: \(error.pantryMessage)"
+        }
+    }
 
     static func sorted(_ items: [PantryItem]) -> [PantryItem] {
         items.sorted {
