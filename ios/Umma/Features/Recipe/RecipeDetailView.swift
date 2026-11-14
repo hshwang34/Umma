@@ -32,6 +32,11 @@ struct RecipeDetailView: View {
         .background(SLColor.background)
         .navigationTitle(model?.title ?? card?.title ?? "Recipe")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let model {
+                ToolbarItemGroup(placement: .topBarTrailing) { toolbarActions(model) }
+            }
+        }
         .task {
             if model == nil {
                 let created = RecipeDetailViewModel(recipeId: recipeId, card: card,
@@ -73,11 +78,14 @@ struct RecipeDetailView: View {
                 if let visibility = model.unpublishedVisibility {
                     unpublishedBanner(visibility)
                 }
+                // Save and Edit are in the bar at the top, so their failures show up here too.
+                actionErrors(model)
                 RecipeHeaderView(
                     title: model.title,
                     creatorName: model.creatorName,
                     creatorId: model.creatorId,
-                    versionNumber: model.versionNumber,
+                    // Readers don't need the version; the owner does, to tell edits apart.
+                    versionNumber: model.isOwner(userId: environment.auth.user?.id) ? model.versionNumber : nil,
                     summary: model.summary,
                     prepMinutes: model.prepMinutes,
                     cookMinutes: model.cookMinutes,
@@ -104,7 +112,6 @@ struct RecipeDetailView: View {
                         primary: retryable ? EmptyStateView.Action("Try again") { Task { await model.load() } } : nil
                     )
                 }
-                actions(model)
                 if dynamicTypeSize.isAccessibilitySize {
                     // Accessibility sizes: the main actions scroll with the recipe instead of
                     // pinning a bar that would cover half the screen.
@@ -131,34 +138,78 @@ struct RecipeDetailView: View {
             }
             Button("Keep published", role: .cancel) {}
         } message: {
-            Text("It disappears from Explore and search. Anyone who already has the link, and any cooking session pinned to this version, keeps it.")
+            Text(RecipeCopy.unpublishMessage)
         }
     }
 
     // MARK: - Actions
 
+    /// Save, Share and the owner's Edit / Unpublish live in the navigation bar, so the page
+    /// itself is the recipe and the two main actions.
     @ViewBuilder
-    private func actions(_ model: RecipeDetailViewModel) -> some View {
+    private func toolbarActions(_ model: RecipeDetailViewModel) -> some View {
         let loaded = model.detail != nil
-        let isOwner = model.isOwner(userId: environment.auth.user?.id)
-        VStack(spacing: Spacing.sm) {
-            if let error = model.saveError {
-                Text(error)
-                    .font(SLFont.footnote)
-                    .foregroundStyle(SLColor.danger)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("Save failed: \(error)")
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Spacing.sm) { saveButton(model, loaded: loaded); shareButton(model) }
-                VStack(spacing: Spacing.sm) { saveButton(model, loaded: loaded); shareButton(model) }
-            }
+        Button {
+            Task { await model.toggleSave() }
+        } label: {
+            Label(model.isSaved ? RecipeCopy.saved : RecipeCopy.save, systemImage: model.isSaved ? "bookmark.fill" : "bookmark")
+        }
+        .disabled(!loaded || model.isTogglingSave)
+        .accessibilityIdentifier("recipe.save")
+        .accessibilityHint(model.isSaved ? "Removes this recipe from Saved" : "Adds this recipe to Saved")
 
-            if isOwner {
-                ownerActions(model)
+        ShareLink(item: model.shareURL, subject: Text(model.title), message: Text("\(model.title) on Umma")) {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .accessibilityIdentifier("recipe.share")
+
+        if model.isOwner(userId: environment.auth.user?.id) {
+            if isOpeningEditor || model.isUnpublishing {
+                ProgressView()
+            } else {
+                Menu {
+                    Button {
+                        Task { await openEditor(model) }
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("recipe.edit")
+                    if model.unpublishedVisibility == nil {
+                        Button(role: .destructive) {
+                            showUnpublishConfirmation = true
+                        } label: {
+                            Label("Unpublish", systemImage: "eye.slash")
+                        }
+                        .accessibilityIdentifier("recipe.unpublish")
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
+                .accessibilityIdentifier("recipe.more")
             }
         }
-        .accessibilityElement(children: .contain)
+    }
+
+    /// A failed Save, Edit or Unpublish says so above the recipe.
+    @ViewBuilder
+    private func actionErrors(_ model: RecipeDetailViewModel) -> some View {
+        if let error = model.saveError {
+            errorLine(error)
+                .accessibilityLabel("Couldn’t save: \(error)")
+                .accessibilityIdentifier("recipe.saveError")
+        }
+        if let error = model.actionError {
+            errorLine(error)
+        }
+    }
+
+    private func errorLine(_ text: String) -> some View {
+        Text(text)
+            .font(SLFont.footnote)
+            .foregroundStyle(SLColor.danger)
+            .padding(Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SLColor.dangerSurface, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
     }
 
     /// Check my pantry + Start cooking: pinned above the tab bar so they're always in reach.
@@ -216,67 +267,8 @@ struct RecipeDetailView: View {
         .disabled(!loaded || starter?.isStarting == true)
         .slDisabledAppearance(!loaded)
         .accessibilityIdentifier("recipe.startCooking")
-        .accessibilityHint("Starts this version as written. Check my pantry first to swap missing ingredients.")
+        .accessibilityHint("Starts the recipe as written. To swap missing ingredients, check your pantry first.")
         .startConfirmation($confirmingStart) { confirmed in Task { await startCooking(servings: confirmed.servings) } }
-    }
-
-    private func saveButton(_ model: RecipeDetailViewModel, loaded: Bool) -> some View {
-        Button {
-            Task { await model.toggleSave() }
-        } label: {
-            Label(model.isSaved ? "Unsave" : "Save", systemImage: model.isSaved ? "bookmark.fill" : "bookmark")
-        }
-        .buttonStyle(SLButtonStyle(prominent: false))
-        .disabled(!loaded || model.isTogglingSave)
-        .slDisabledAppearance(!loaded)
-        .accessibilityIdentifier("recipe.save")
-        .accessibilityHint(model.isSaved ? "Removes this recipe from Saved" : "Adds this recipe to Saved")
-    }
-
-    private func shareButton(_ model: RecipeDetailViewModel) -> some View {
-        ShareLink(item: model.shareURL, subject: Text(model.title), message: Text("\(model.title) on Umma")) {
-            Label("Share", systemImage: "square.and.arrow.up")
-        }
-        .buttonStyle(SLButtonStyle(prominent: false))
-        .accessibilityIdentifier("recipe.share")
-    }
-
-    @ViewBuilder
-    private func ownerActions(_ model: RecipeDetailViewModel) -> some View {
-        if let error = model.actionError {
-            Text(error)
-                .font(SLFont.footnote)
-                .foregroundStyle(SLColor.danger)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        Button {
-            Task { await openEditor(model) }
-        } label: {
-            if isOpeningEditor {
-                ProgressView().frame(maxWidth: .infinity)
-            } else {
-                Label("Edit", systemImage: "pencil")
-            }
-        }
-        .buttonStyle(SLButtonStyle(prominent: false))
-        .disabled(isOpeningEditor)
-        .accessibilityIdentifier("recipe.edit")
-        .accessibilityHint("Opens a new draft; the published version stays as it is until you publish again")
-
-        if model.unpublishedVisibility == nil {
-            Button {
-                showUnpublishConfirmation = true
-            } label: {
-                if model.isUnpublishing {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else {
-                    Label("Unpublish", systemImage: "eye.slash")
-                }
-            }
-            .buttonStyle(SLButtonStyle(prominent: false))
-            .disabled(model.isUnpublishing)
-            .accessibilityIdentifier("recipe.unpublish")
-        }
     }
 
     /// Start cooking this exact version as written (no swaps; those are chosen on Pantry fit).
@@ -307,14 +299,14 @@ struct RecipeDetailView: View {
         }
     }
 
-    private func unpublishedBanner(_ visibility: RecipeVisibility) -> some View {
+    private func unpublishedBanner(_: RecipeVisibility) -> some View {
         HStack(alignment: .top, spacing: Spacing.sm) {
             Image(systemName: "eye.slash")
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 Text("Unpublished")
                     .font(SLFont.headline)
-                Text("Visibility is now \(visibility.label.lowercased()). It no longer appears in Explore; existing links and pinned sessions keep this version.")
+                Text(RecipeCopy.unpublishedNotice)
                     .font(SLFont.footnote)
             }
         }
@@ -324,6 +316,15 @@ struct RecipeDetailView: View {
         .background(SLColor.warningSurface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         .accessibilityElement(children: .combine)
     }
+}
+
+/// Words the recipe page and Profile share, so unpublishing reads the same in both places.
+enum RecipeCopy {
+    static let save = "Save"
+    /// The filled bookmark's label: it states what the recipe is, and the hint says a tap removes it.
+    static let saved = "Saved"
+    static let unpublishMessage = "It leaves Explore and search. People who have the link, or are already cooking it, can still open it."
+    static let unpublishedNotice = "It’s no longer in Explore or search. People who have the link, or are already cooking it, can still open it."
 }
 
 /// Hero + title block shared by the live detail and the draft preview.

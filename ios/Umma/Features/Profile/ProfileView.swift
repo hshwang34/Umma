@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Profile (PRD §6): my recipes, my drafts, account, device state, server, sign out.
+/// Profile (PRD §6): account, my recipes, my drafts, cooking preferences, sign out. Device and
+/// server state show in debug builds only.
 struct ProfileView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var model: MyRecipesViewModel?
@@ -32,11 +33,12 @@ struct ProfileView: View {
                         .listRowSeparator(.hidden)
                 }
                 .listSectionSpacing(.compact)
+                accountSection
                 myRecipesSection
                 draftsSection
                 foodSection
-                accountSection
-                deviceSection
+                // Camera, microphone and server state are for whoever is building the app.
+                if BuildConfig.isDebug { deviceSection }
                 Section {
                     Button(role: .destructive) {
                         environment.auth.signOut()
@@ -69,7 +71,7 @@ struct ProfileView: View {
                 }
                 Button("Keep published", role: .cancel) {}
             } message: {
-                Text("It disappears from Explore and search. Existing links and pinned cooking sessions keep this version.")
+                Text(RecipeCopy.unpublishMessage)
             }
             .confirmationDialog("Delete “\(draftToDelete?.displayTitle ?? "")”?", isPresented: Binding(get: { draftToDelete != nil }, set: { if !$0 { draftToDelete = nil } }), titleVisibility: .visible) {
                 Button("Delete draft", role: .destructive) {
@@ -77,7 +79,7 @@ struct ProfileView: View {
                 }
                 Button("Keep draft", role: .cancel) {}
             } message: {
-                Text("Only the draft is deleted. Anything already published stays published.")
+                Text("Your published recipes aren’t affected.")
             }
         }
         .confirmationDialog(AccountDeletionModel.confirmationTitle, isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
@@ -212,7 +214,7 @@ struct ProfileView: View {
                     .accessibilityIdentifier("profile.myRecipes.retry")
             case .loaded:
                 if let model, model.recipes.isEmpty {
-                    Text("Nothing published yet. Create a recipe, add ingredients and steps, then publish it.")
+                    Text("Recipes you publish appear here.")
                         .font(SLFont.footnote)
                         .foregroundStyle(SLColor.textSecondary)
                 } else if let model {
@@ -236,10 +238,6 @@ struct ProfileView: View {
             }
         } header: {
             Text("My recipes")
-        } footer: {
-            if let model, !model.recipes.isEmpty {
-                Text("Swipe a recipe to unpublish it. Published versions are never changed in place; Edit on the recipe creates a new draft.")
-            }
         }
     }
 
@@ -247,34 +245,27 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var draftsSection: some View {
-        if let model, model.phase == .loaded {
+        // No drafts, no section: an empty heading only adds a row to scroll past.
+        if let model, model.phase == .loaded, !model.drafts.isEmpty {
             Section {
-                if model.drafts.isEmpty {
-                    Text("No drafts in progress.")
-                        .font(SLFont.footnote)
-                        .foregroundStyle(SLColor.textSecondary)
-                } else {
-                    ForEach(model.drafts) { draft in
-                        Button {
-                            Task { await continueDraft(draft) }
-                        } label: {
-                            DraftRow(draft: draft, isBusy: model.busyDraftIds.contains(draft.id) || isOpeningEditor)
-                        }
-                        .disabled(isOpeningEditor)
-                        .accessibilityIdentifier("profile.draft.\(draft.id.uuidString.lowercased())")
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button("Delete", role: .destructive) { draftToDelete = draft }
-                        }
-                        .contextMenu {
-                            Button("Continue editing", systemImage: "pencil") { Task { await continueDraft(draft) } }
-                            Button("Delete draft…", systemImage: "trash", role: .destructive) { draftToDelete = draft }
-                        }
+                ForEach(model.drafts) { draft in
+                    Button {
+                        Task { await continueDraft(draft) }
+                    } label: {
+                        DraftRow(draft: draft, isBusy: model.busyDraftIds.contains(draft.id) || isOpeningEditor)
+                    }
+                    .disabled(isOpeningEditor)
+                    .accessibilityIdentifier("profile.draft.\(draft.id.uuidString.lowercased())")
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Delete", role: .destructive) { draftToDelete = draft }
+                    }
+                    .contextMenu {
+                        Button("Continue editing", systemImage: "pencil") { Task { await continueDraft(draft) } }
+                        Button("Delete draft…", systemImage: "trash", role: .destructive) { draftToDelete = draft }
                     }
                 }
             } header: {
                 Text("Drafts")
-            } footer: {
-                if !model.drafts.isEmpty { Text("Tap to continue. Swipe to delete.") }
             }
         }
     }
@@ -310,7 +301,7 @@ struct ProfileView: View {
         } header: {
             Text("Cooking")
         } footer: {
-            Text("Allergies block swaps; foods to avoid are skipped when possible. \(DefaultServingsViewModel.footer)")
+            Text(DefaultServingsViewModel.footer)
         }
     }
 
@@ -473,13 +464,11 @@ private struct MyRecipeRow: View {
                 .font(SLFont.headline)
                 .foregroundStyle(SLColor.textPrimary)
             HStack(spacing: Spacing.xs) {
-                MetadataPill(
-                    text: recipe.visibility.label,
-                    systemImage: recipe.visibility == .public ? "globe" : "lock",
-                    style: recipe.visibility == .public ? .accent : .neutral,
-                    accessibilityLabel: "Visibility: \(recipe.visibility.label)"
-                )
-                MetadataPill(text: "v\(recipe.card.versionNumber)", accessibilityLabel: "Version \(recipe.card.versionNumber)")
+                // Published is the normal state and needs no badge; only the exceptions get one.
+                if recipe.visibility != .public {
+                    MetadataPill(text: recipe.visibility.label, systemImage: "lock",
+                                 accessibilityLabel: "Visibility: \(recipe.visibility.label)")
+                }
                 if recipe.hasOpenDraft {
                     MetadataPill(text: "Draft in progress", systemImage: "pencil")
                 }
@@ -508,7 +497,7 @@ private struct DraftRow: View {
                 .font(SLFont.caption)
                 .foregroundStyle(SLColor.textSecondary)
                 if draft.recipeId != nil {
-                    MetadataPill(text: "New version of a published recipe", systemImage: "arrow.triangle.branch")
+                    MetadataPill(text: "Update to a published recipe", systemImage: "arrow.triangle.branch")
                 }
             }
             Spacer()
