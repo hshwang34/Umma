@@ -15,7 +15,8 @@ Invariants enforced here (CLAUDE.md):
   ``creator_reviewed`` (the creator approved them), refuses steps whose clip is still rendering
   or failed, attaches the used clips to the version and discards the draft's other clips.
   Deleting a draft deletes its unpublished clips; the source video is kept (DECISIONS #20).
-* Brief 019: deleting a draft deletes its unpublished cover photos too.
+* Brief 019: publishing pins the draft's cover photo to the version the same way; an edit
+  draft starts with the latest version's cover.
 """
 
 from __future__ import annotations
@@ -462,6 +463,7 @@ async def publish(
     row.structured_draft_json = normalised
     verdict = validate(content)
     clip_ids = await _check_clips(session, user, row, content, verdict)
+    cover_id = await covers.publishable_cover(session, row)
     if not verdict.publishable:
         raise ValidationError(
             "Draft is not ready to publish",
@@ -507,6 +509,7 @@ async def publish(
         summary=normalised["summary"],
         tags=normalised["tags"],
         cover_image_url=normalised["cover_image_url"],
+        cover_media_id=cover_id,
     )
     session.add(version)
     await session.flush()
@@ -515,6 +518,7 @@ async def publish(
     recipe.summary = normalised["summary"]
     recipe.tags = normalised["tags"]
     recipe.cover_image_url = normalised["cover_image_url"]
+    recipe.cover_media_id = cover_id
     recipe.latest_version_id = version.id
     recipe.visibility = Visibility.PUBLIC
     recipe.published_at = recipe.published_at or datetime.now(UTC)
@@ -530,6 +534,9 @@ async def publish(
         version_id=version.id,
         clip_ids=clip_ids,
         source_media_id=content.extraction.source_media_id if content.extraction else None,
+    )
+    await covers.attach_on_publish(
+        session, draft_id=row.id, recipe_id=recipe.id, version_id=version.id, cover_id=cover_id
     )
     return PublishResult(
         recipe_id=recipe.id,
@@ -593,6 +600,7 @@ async def start_edit(session: AsyncSession, user: User, recipe_id: uuid.UUID) ->
         owner_user_id=user.id,
         recipe_id=recipe.id,
         structured_draft_json=normalise(content),
+        cover_media_id=version.cover_media_id,
         status=DraftStatus.EDITING,
     )
     try:
