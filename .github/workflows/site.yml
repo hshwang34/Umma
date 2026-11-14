@@ -1,7 +1,7 @@
 name: site
 on:
-  push: { paths: ['site/**', '.github/workflows/site.yml'] }
-  pull_request: { paths: ['site/**', '.github/workflows/site.yml'] }
+  push: { paths: ['site/**', '.github/workflows/site.yml', '.vercelignore'] }
+  pull_request: { paths: ['site/**', '.github/workflows/site.yml', '.vercelignore'] }
   workflow_dispatch:
 jobs:
   check:
@@ -56,4 +56,4 @@ jobs:
             echo "::error::VERCEL_TOKEN is not set, so the site was not deployed. Add it under Settings > Secrets and variables > Actions, then rerun this workflow."
             exit 1
           fi
-          npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+          npx --yes vercel@56.5.0 deploy --prod --yes --token "$VERCEL_TOKEN"
