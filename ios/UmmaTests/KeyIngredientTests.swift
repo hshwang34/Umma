@@ -107,6 +107,36 @@ final class KeyIngredientTests: XCTestCase {
         XCTAssertEqual(service.calls.filter { $0 == .delete(chickenId) }.count, 1, "nothing left to remove")
     }
 
+    func testRemovedTextIsDroppedOnALaterReload() async throws {
+        let service = FakePantryService()
+        let json = TestBox(fitJSON())
+        service.fitHandler = { _ in try PantryFixtures.decode(PantryFit.self, json.value) }
+        let model = makeModel(service)
+        await model.load()
+        await model.removeKeyIngredient()
+        json.value = fitJSON(pantryItem: false, seen: nil, status: "missing")
+        await model.load()
+        XCTAssertEqual(model.keyIngredient?.title, "Removed chicken thighs from your pantry", "shown through the reload the tap caused")
+
+        await model.load()
+        XCTAssertEqual(model.keyIngredient?.title, "No chicken thighs in your pantry", "a later reload no longer says it was just removed")
+    }
+
+    func testRemovedTextIsDroppedWhenTheIngredientIsBack() async throws {
+        let service = FakePantryService()
+        let json = TestBox(fitJSON())
+        service.fitHandler = { _ in try PantryFixtures.decode(PantryFit.self, json.value) }
+        let model = makeModel(service)
+        await model.load()
+        await model.removeKeyIngredient()
+        // The reload finds it in the pantry again (added back elsewhere), then it goes missing later.
+        await model.load()
+        XCTAssertEqual(model.keyIngredient?.state, .ask)
+        json.value = fitJSON(pantryItem: false, seen: nil, status: "missing")
+        await model.load()
+        XCTAssertEqual(model.keyIngredient?.title, "No chicken thighs in your pantry")
+    }
+
     func testAFailedRemoveSaysSoAndKeepsTheCard() async throws {
         let service = FakePantryService()
         let json = fitJSON()
