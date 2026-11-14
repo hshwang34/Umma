@@ -36,7 +36,7 @@ Emoji (option 1) were rejected as off-brand.
 - [ ] **One source of truth.** A generator in `docs/brand/tools/` holds the geometry and writes the
   SVG imagesets and a review gallery (`docs/brand/ingredient-icons.html`), as
   `umma-brand.swift` does for the mark. Nobody hand-edits the generated files.
-- [ ] **Dictionary.** Every dictionary entry names its icon. A test fails if an entry names an icon
+- [ ] **Dictionary.** Every dictionary entry resolves to an icon. A test fails if an entry names an icon
   with no asset, or if an entry has no icon.
 - [ ] **API.** Pantry items return `icon`: the ingredient's icon, else its category's, else
   `basket`. The field is additive, so older app builds ignore it.
@@ -74,7 +74,12 @@ Emoji (option 1) were rejected as off-brand.
    → *Answer:* A, default; revisit after the gallery review.
 
 ## Engineering decisions (filled in by the lead while building)
-- …
+- **The mapping lives in a generated fixture,** `fixtures/ingredient_icons.json`, not as an `icon`
+  key added to every row of `ingredients.json`. The generator owns it and checks it against the
+  dictionary, and the dictionary file isn't reformatted. PR 3 reads it. The coverage test still
+  holds: every entry resolves to an icon through its own mapping or its category's.
+- **106 icons from about 55 forms.** Ingredients that share a form share its drawing in their
+  own colours. 147 of the 148 entries have their own icon. `sulfites` uses the basket.
 
 ## Risks / what could go wrong for users
 - **A wrong icon misleads.** For example, a chilli icon on a mild pepper. Icons are decoration:
