@@ -54,6 +54,8 @@ final class SessionEndViewModel {
     }
 
     var session: CookingSession? { cooking.session }
+    /// Set once the cook is finished and something went on the shopping list (brief 017).
+    var shoppingSummary: ShoppingAddedSummary? { cooking.shoppingSummary }
     var adaptations: [SessionAdaptation] { session?.adaptations ?? [] }
     /// "Save my changes" only makes sense when there are changes.
     var showsSaveChanges: Bool { !adaptations.isEmpty }

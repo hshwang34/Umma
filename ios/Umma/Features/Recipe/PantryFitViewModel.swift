@@ -113,7 +113,7 @@ struct KeyIngredientCard: Equatable {
     let detail: String
     let canFindSwap: Bool
 
-    init?(fit: PantryFit, now: Date, swapsEnabled: Bool, justRemoved: Bool = false) {
+    init?(fit: PantryFit, now: Date, swapsEnabled: Bool, justRemoved: Bool = false, onShoppingList: Bool = false) {
         guard let item = fit.items.first(where: { $0.isKey == true }) else { return nil }
         ingredientRef = item.ingredientRef
         name = item.name
@@ -133,7 +133,9 @@ struct KeyIngredientCard: Equatable {
         } else {
             state = .notInPantry
             title = justRemoved ? "Removed \(shown) from your pantry" : "No \(shown) in your pantry"
-            detail = "It’s the main ingredient of this dish. You can look for a swap, or add it if you have some."
+            detail = justRemoved && onShoppingList
+                ? "It’s on your shopping list now. You can look for a swap for tonight."
+                : "It’s the main ingredient of this dish. You can look for a swap, or add it if you have some."
             canFindSwap = swapsEnabled
         }
     }
@@ -200,6 +202,8 @@ final class PantryFitViewModel {
 
     private let service: PantryService
     private let cooking: CookingService?
+    /// Brief 017: "I don’t have that" also puts the key ingredient on the shopping list.
+    private let shopping: ShoppingService?
     private let now: @MainActor () -> Date
     var onPantryChanged: (@MainActor () -> Void)?
 
@@ -213,11 +217,12 @@ final class PantryFitViewModel {
     var startError: String? { starter?.errorMessage }
 
     init(recipeVersionId: UUID, recipeTitle: String, service: PantryService, cooking: CookingService? = nil,
-         now: @escaping @MainActor () -> Date = { Date() }) {
+         shopping: ShoppingService? = nil, now: @escaping @MainActor () -> Date = { Date() }) {
         self.recipeVersionId = recipeVersionId
         self.recipeTitle = recipeTitle
         self.service = service
         self.cooking = cooking
+        self.shopping = shopping
         starter = cooking.map { SessionStarter(service: $0) }
         self.now = now
     }
@@ -326,8 +331,11 @@ final class PantryFitViewModel {
     var keyIngredient: KeyIngredientCard? {
         guard let fit else { return nil }
         return KeyIngredientCard(fit: fit, now: now(), swapsEnabled: cooking != nil,
-                                 justRemoved: removedKeyRef != nil)
+                                 justRemoved: removedKeyRef != nil, onShoppingList: keyOnShoppingList)
     }
+
+    /// The removed key ingredient is on the shopping list (the server confirmed the add).
+    private var keyOnShoppingList = false
 
     /// The key ingredient the cook just said they don't have, so the card can say what happened.
     private var removedKeyRef: String?
@@ -341,15 +349,22 @@ final class PantryFitViewModel {
         defer { busyItemIds.remove(id) }
         do {
             try await service.deletePantryItem(id: id)
-            removedKeyRef = card.ingredientRef
-            onPantryChanged?()
         } catch let error as APIError where error.isNotFound {
             // Already gone (deleted elsewhere): the answer is the same.
-            removedKeyRef = card.ingredientRef
-            onPantryChanged?()
         } catch {
             actionError = "Couldn’t remove \(card.name): \(error.pantryMessage)"
+            return
         }
+        removedKeyRef = card.ingredientRef
+        if let shopping {
+            do {
+                _ = try await shopping.addShoppingItem(name: card.name, reason: .ranOut, recipeVersionId: recipeVersionId)
+                keyOnShoppingList = true
+            } catch {
+                actionError = "Removed \(card.name), but couldn’t add it to your shopping list: \(error.pantryMessage)"
+            }
+        }
+        onPantryChanged?()
     }
 
     // MARK: Actions

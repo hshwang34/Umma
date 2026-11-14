@@ -73,7 +73,7 @@ struct PantryFitView: View {
 
     private func makeModel() -> PantryFitViewModel {
         let model = PantryFitViewModel(recipeVersionId: recipeVersionId, recipeTitle: recipeTitle,
-                                       service: environment.api, cooking: environment.api)
+                                       service: environment.api, cooking: environment.api, shopping: environment.api)
         model.onPantryChanged = { [environment] in environment.notePantryChanged() }
         return model
     }
@@ -311,12 +311,12 @@ private struct KeyIngredientCardView: View {
                     .accessibilityIdentifier("fit.key.stillHave")
                 Button(KeyIngredientCard.dontHaveTitle, action: onDontHave)
                     .buttonStyle(.bordered)
-                    .accessibilityHint("Removes \(card.name) from your pantry")
+                    .accessibilityHint("Removes \(card.name) from your pantry and puts it on your shopping list")
                     .accessibilityIdentifier("fit.key.dontHave")
             case .seenToday:
                 Button(KeyIngredientCard.dontHaveTitle, action: onDontHave)
                     .buttonStyle(.bordered)
-                    .accessibilityHint("Removes \(card.name) from your pantry")
+                    .accessibilityHint("Removes \(card.name) from your pantry and puts it on your shopping list")
                     .accessibilityIdentifier("fit.key.dontHave")
             case .notInPantry:
                 if card.canFindSwap {
