@@ -16,8 +16,15 @@ protocol PantryService: Sendable {
     func observeTranscript(_ transcript: String) async throws -> PantryObservation
     /// One photo (multipart) → candidates. Nothing is written to the pantry.
     func observePhoto(_ photo: PantryPhotoUpload) async throws -> PantryObservation
-    /// `POST /recipe-versions/{id}/fit`.
-    func fit(recipeVersionId: UUID) async throws -> PantryFit
+    /// `POST /recipe-versions/{id}/fit`, judged against the amounts for `servings` (brief 020).
+    /// Nil means the recipe's own.
+    func fit(recipeVersionId: UUID, servings: Int?) async throws -> PantryFit
+}
+
+extension PantryService {
+    func fit(recipeVersionId: UUID) async throws -> PantryFit {
+        try await fit(recipeVersionId: recipeVersionId, servings: nil)
+    }
 }
 
 extension APIClient: PantryService {
@@ -53,9 +60,15 @@ extension APIClient: PantryService {
         try await send(.multipart("/v1/pantry/observations", form: MultipartFormData.pantryPhoto(photo)))
     }
 
-    func fit(recipeVersionId: UUID) async throws -> PantryFit {
-        try await send(.post("/v1/recipe-versions/\(Self.pathId(recipeVersionId))/fit", body: Self.emptyObject))
+    func fit(recipeVersionId: UUID, servings: Int?) async throws -> PantryFit {
+        // No servings: the same empty body as before, which the server reads as the recipe's own.
+        let body = try servings.map { try encoder.encode(FitRequest(servings: $0)) } ?? Self.emptyObject
+        return try await send(.post("/v1/recipe-versions/\(Self.pathId(recipeVersionId))/fit", body: body))
     }
+}
+
+private struct FitRequest: Encodable {
+    let servings: Int
 }
 
 private struct TranscriptObservationRequest: Encodable {

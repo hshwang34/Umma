@@ -5,6 +5,8 @@ struct PantryFitView: View {
     @Environment(AppEnvironment.self) private var environment
     let recipeVersionId: UUID
     let recipeTitle: String
+    /// Brief 020: the servings on the recipe page's dial. Nil means the recipe's own.
+    var servings: ServingsChoice? = nil
 
     @State private var model: PantryFitViewModel?
     @State private var editor: PantryItemEditorModel?
@@ -72,7 +74,7 @@ struct PantryFitView: View {
     }
 
     private func makeModel() -> PantryFitViewModel {
-        let model = PantryFitViewModel(recipeVersionId: recipeVersionId, recipeTitle: recipeTitle,
+        let model = PantryFitViewModel(recipeVersionId: recipeVersionId, recipeTitle: recipeTitle, servings: servings,
                                        service: environment.api, cooking: environment.api, shopping: environment.api)
         model.onPantryChanged = { [environment] in environment.notePantryChanged() }
         return model
@@ -245,6 +247,10 @@ struct PantryFitView: View {
             }
             if let sub = model.subheadline {
                 Text(sub).font(SLFont.title3).foregroundStyle(SLColor.textPrimary)
+            }
+            if let servings = model.servingsText {
+                MetadataPill(text: servings, systemImage: "person.2", style: .accent)
+                    .accessibilityIdentifier("fit.servings")
             }
             if let coverage = model.coverageText, let fit = model.fit {
                 // The count ticks up once; VoiceOver hears only the final, full sentence.
