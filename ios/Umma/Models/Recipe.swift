@@ -82,8 +82,12 @@ struct Ingredient: Codable, Sendable, Identifiable, Hashable {
     let optional: Bool
     let preparation: String?
     let notes: String?
+    /// Brief 008/014: set on AI-drafted ingredients; omitted on the wire when not set (all
+    /// hand-authored data), never sent as `null`.
+    var evidenceOrigin: EvidenceOrigin? = nil
 
-    /// Encodes absent optionals as explicit `null` so a PATCH body matches the detail shape exactly.
+    /// Encodes absent optionals as explicit `null` so a PATCH body matches the detail shape exactly
+    /// (except `evidence_origin`, which the contract omits when unset).
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -93,6 +97,7 @@ struct Ingredient: Codable, Sendable, Identifiable, Hashable {
         try container.encode(optional, forKey: .optional)
         try container.encode(preparation, forKey: .preparation)
         try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(evidenceOrigin, forKey: .evidenceOrigin)
     }
 }
 
