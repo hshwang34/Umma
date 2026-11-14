@@ -349,6 +349,7 @@ COSTLY_WRITES = {
 ORDINARY_WRITES = {
     ("PUT", "/v1/creators/{creator_id}/follow"),
     ("DELETE", "/v1/creators/{creator_id}/follow"),
+    ("DELETE", "/v1/me"),
     ("PATCH", "/v1/me"),
     ("POST", "/v1/me/onboarding/complete"),
     ("PUT", "/v1/me/preferences"),

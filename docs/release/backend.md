@@ -79,7 +79,7 @@ the repo, a PR or a log.
 |---|---|---|
 | `GEMINI_API_KEY` | Coach, pantry photos, receipts, video extraction, live scan. Paid-tier key from the personal Cloud project (DECISIONS #19). Also needs `AI_PROVIDER=gemini`. | With `AI_PROVIDER=mock` every AI answer is the labelled demo path. |
 | `GOOGLE_IOS_CLIENT_ID` | iOS OAuth client id for Sign in with Google (DECISIONS #33). Not secret, but set here so it is in one place. | `POST /v1/auth/google` does not exist. |
-| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Sign in with Apple key, used to exchange the sign-in authorization code for a refresh token (stored encrypted) so the token can be revoked when the person deletes their account (App Review guideline 5.1.1(v)). Team ID `V56DG94ZL5`; the key ID and `.p8` come from the developer portal (Keys → Sign in with Apple). Set the key with `APPLE_PRIVATE_KEY="$(cat AuthKey_XXXXXXXXXX.p8)"` and keep the `.p8` out of the repo. | Sign-in and account deletion still work; the Apple revoke is skipped and logged. **Set these before the external beta.** |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Sign in with Apple key, used to exchange the sign-in authorization code for a refresh token (stored encrypted) and to revoke it when the person deletes their account (App Review guideline 5.1.1(v)). Team ID `V56DG94ZL5`; the key ID and `.p8` come from the developer portal (Keys → Sign in with Apple). Set the key with `APPLE_PRIVATE_KEY="$(cat AuthKey_XXXXXXXXXX.p8)"` and keep the `.p8` out of the repo. | Sign-in and account deletion still work; the Apple revoke is skipped and logged. **Set these before the external beta.** |
 | `PEXELS_API_KEY` | Stock cover photo after a first publish (brief 019). | Recipes without a cover stay without one. |
 | `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | Paid server voice (brief 012). Also needs `PAID_VOICE_ENABLED=true`, which needs the PM's go (DECISIONS #26). | Voice stays on the phone. |
 
@@ -210,7 +210,36 @@ Logs are JSON lines: method, path, status, duration and a correlation id per req
 tokens, photos and audio are never logged. A tester's error screen shows the correlation id;
 search the logs for it.
 
-## 9. Not done here
+## 9. Account deletion
+
+`DELETE /v1/me` (Profile → Delete account) answers 204 and, in one transaction, deletes the
+account and everything it owns: pantry, shopping list, preferences, follows, saves, cooking
+sessions, drafts, recordings' transcripts, recipes, and every video, clip and cover photo
+(the worker removes the files from Tigris within seconds; check with
+`fly logs --process-group worker`).
+
+- Recipes that another person has cooked, saved or adapted (or holds a substitution
+  suggestion for) are kept without their media under an anonymous account named "Former Umma
+  cook", so other people's sessions and saved lists keep working. All other recipes are
+  deleted. A kept recipe is served without its step clips and without the creator's own cover
+  link (the stock photo stays). The recipe's text is unchanged: anything the creator typed
+  into the title, notes or steps, including a name, is still shown.
+- If someone starts cooking one of the person's recipes at the very moment of deletion, the
+  deletion re-checks and keeps that recipe. If it still cannot finish, nothing is deleted and
+  the app gets 409 `ACCOUNT_DELETION_BUSY` (retryable); trying again works.
+- AI spend rows stay, with the person removed, so deleting an account never refunds the
+  monthly budget.
+- The Apple token is revoked after the data is gone. The log line `account deleted` carries
+  `apple_revoke`: `revoked`, `failed` (Apple refused or was down; the account is still
+  deleted), `skipped_no_token` (the app did not send an authorization code at sign-in, or the
+  Apple key was not configured then), `skipped_not_configured`, or `not_apple` (Google).
+  For `failed`/`skipped`, the person can remove the app under iPhone Settings → Apple Account
+  → Sign in with Apple.
+- The stored Apple refresh token is encrypted with a key derived from `JWT_SECRET`. Rotating
+  `JWT_SECRET` makes stored tokens unreadable: later deletions skip the revoke until the
+  person signs in again.
+
+## 10. Not done here
 
 - No custom API domain: the app uses `https://<app>.fly.dev`.
 - No staging app. Test risky changes locally with `make check` and the docker build above.
