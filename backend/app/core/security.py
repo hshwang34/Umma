@@ -42,6 +42,12 @@ def create_access_token(
 
 def verify_access_token(settings: Settings, token: str) -> uuid.UUID:
     """Return the subject user id or raise ``Unauthorized``. Never leaks why beyond the code."""
+    return verify_access_token_claims(settings, token)[0]
+
+
+def verify_access_token_claims(settings: Settings, token: str) -> tuple[uuid.UUID, int]:
+    """The subject user id and the ``exp`` (Unix seconds), for long-lived connections that must
+    end when the token does (brief 012 voice stream). Raises ``Unauthorized`` like above."""
     try:
         payload = jwt.decode(
             token,
@@ -50,8 +56,8 @@ def verify_access_token(settings: Settings, token: str) -> uuid.UUID:
             issuer=settings.app_name,
             options={"require": ["sub", "exp", "iat"]},
         )
-        return uuid.UUID(str(payload["sub"]))
-    except (jwt.PyJWTError, ValueError, KeyError) as exc:
+        return uuid.UUID(str(payload["sub"])), int(payload["exp"])
+    except (jwt.PyJWTError, ValueError, KeyError, TypeError) as exc:
         raise Unauthorized("Invalid or expired token") from exc
 
 
