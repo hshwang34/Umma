@@ -1,0 +1,12 @@
+{
+  "images" : [
+    { "filename" : "fresh-cheese.svg", "idiom" : "universal" },
+    {
+      "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ],
+      "filename" : "fresh-cheese-dark.svg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 },
+  "properties" : { "preserves-vector-representation" : true }
+}

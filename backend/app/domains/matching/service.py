@@ -47,9 +47,10 @@ async def load_pantry(session: AsyncSession, user: User) -> list[PantryEntry]:
 async def fit_version(
     session: AsyncSession, user: User, version_id: uuid.UUID, now: datetime
 ) -> FitResult:
-    version, _recipe, _saved = await recipes_service.get_accessible_version(
+    version, recipe, _saved = await recipes_service.get_accessible_version(
         session, version_id, user=user
     )
     pantry = await load_pantry(session, user)
     dictionary = await load_dictionary(session)
-    return fit(version.id, ingredients_of(version), pantry, dictionary, now)
+    title = version.title or recipe.title
+    return fit(version.id, ingredients_of(version), pantry, dictionary, now, title=title)

@@ -90,3 +90,46 @@ async def test_taste_fields_reject_values_outside_the_lists(client: AsyncClient)
     ):
         r = await client.put("/v1/me/preferences", json=bad, headers=alice)
         assert r.status_code == 422, bad
+
+
+async def test_default_servings_set_change_and_clear(client: AsyncClient) -> None:
+    """Brief 020: off ("the recipe's own") until set, 1 to 6 once set, null clears it."""
+    alice = await _bearer(client, "alice@example.com")
+    assert (await client.get("/v1/me", headers=alice)).json()["default_servings"] is None
+
+    r = await client.patch("/v1/me", json={"default_servings": 2}, headers=alice)
+    assert r.status_code == 200, r.text
+    assert r.json()["default_servings"] == 2
+    assert r.json()["role"] is None, "an omitted field is left alone"
+
+    # Setting the role later does not reset the default, and the other way round.
+    r = await client.patch("/v1/me", json={"role": "cook"}, headers=alice)
+    assert (r.json()["role"], r.json()["default_servings"]) == ("cook", 2)
+    r = await client.patch("/v1/me", json={"default_servings": 6}, headers=alice)
+    assert (r.json()["role"], r.json()["default_servings"]) == ("cook", 6)
+
+    r = await client.patch("/v1/me", json={"default_servings": None}, headers=alice)
+    assert r.status_code == 200, r.text
+    assert r.json()["default_servings"] is None
+    assert (await client.get("/v1/me", headers=alice)).json()["default_servings"] is None
+
+    bob = await _bearer(client, "bob@example.com")
+    assert (await client.get("/v1/me", headers=bob)).json()["default_servings"] is None
+
+
+async def test_default_servings_rejects_out_of_range_and_bad_bodies(client: AsyncClient) -> None:
+    alice = await _bearer(client, "alice@example.com")
+    await client.patch("/v1/me", json={"default_servings": 3}, headers=alice)
+    for bad in (
+        {"default_servings": 0},
+        {"default_servings": 7},
+        {"default_servings": -1},
+        {"default_servings": 2.5},
+        {"default_servings": "lots"},
+        {"role": None},
+        {"role": None, "default_servings": 2},
+    ):
+        r = await client.patch("/v1/me", json=bad, headers=alice)
+        assert r.status_code == 422, (bad, r.text)
+    assert (await client.get("/v1/me", headers=alice)).json()["default_servings"] == 3
+    assert (await client.patch("/v1/me", json={"default_servings": 2})).status_code == 401

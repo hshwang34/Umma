@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import Settings
 from app.db.models import User
@@ -32,6 +32,8 @@ class UserOut(BaseModel):
     # Brief 015: null until onboarding is finished / a role is chosen.
     onboarded_at: datetime | None = None
     role: Literal["cook", "creator"] | None = None
+    # Brief 020: servings every recipe opens scaled to. Null means "the recipe's own".
+    default_servings: int | None = None
 
     @classmethod
     def from_model(cls, user: User, settings: Settings) -> UserOut:
@@ -43,15 +45,28 @@ class UserOut(BaseModel):
             entitlement=entitlement_for(user, settings),
             onboarded_at=user.onboarded_at,
             role=user.role.value if user.role else None,
+            default_servings=user.default_servings,
         )
 
 
 class UserPatch(BaseModel):
-    """``PATCH /me`` (brief 015). Only the role is editable for now."""
+    """``PATCH /me``: the onboarding role (brief 015) and default servings (brief 020).
+
+    Only the fields that are sent change. ``default_servings: null`` clears it back to "the
+    recipe's own". An empty body, or ``role: null``, is rejected."""
 
     model_config = ConfigDict(extra="forbid")
 
-    role: Literal["cook", "creator"]
+    role: Literal["cook", "creator"] | None = None
+    default_servings: int | None = Field(default=None, ge=1, le=6)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> UserPatch:
+        if not self.model_fields_set:
+            raise ValueError("send at least one field")
+        if "role" in self.model_fields_set and self.role is None:
+            raise ValueError("role cannot be cleared")
+        return self
 
 
 _EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
