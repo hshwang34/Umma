@@ -413,3 +413,22 @@ the free-domain line of #20: `umma.vercel.app` and `umma-site.vercel.app` were a
 - **Deploys:** Vercel project `umma-site` deploys `site/` from `main` automatically. Merging a PR
   that changes `site/` puts it live in production; other commits are skipped.
 *Lives in:* `docs/product/briefs/011-product-site.md`.
+
+#37 · 2026-11-14 · **On-screen words follow eight writing rules; the recipe page and Profile are stripped back (brief 021).** The PM asked for a UX-writing and clutter pass and delegated the calls.
+- **Rules:** say what happened and what to do next; one word per thing; never show internals
+  (server, session, version number, cached, pinned); don't explain standard gestures; badge the
+  exception, not the rule; errors start with "Couldn't"; sentence case and US spelling; privacy
+  and safety promises are never cut. The full list is in the brief and applies to all new copy.
+- **Words:** a *cook* is a person, never a recipe in progress. A *swap* is never a
+  "substitute". Shopping items are *crossed off*; scanned items are *selected*.
+- **Recipe page:** Save and Share are icons in the top bar, and the owner's Edit and Unpublish
+  sit in a More menu beside them. The version badge shows only to the owner.
+- **Profile:** account first. The Device section shows only in debug builds. Drafts shows only
+  when there is one. Gesture footers are gone.
+- **Publishing:** "Publish this recipe?" the first time, "Publish your changes?" after. No
+  version numbers.
+- **Unchanged:** provenance labels ("Creator instructions", "AI-extracted"), swap confidence
+  labels, allergy and food-safety wording, first-person button labels ("Check my pantry").
+- **Not asked, PM may revisit:** "Cook without it" replaces "Keep it missing" when no swap is
+  found; buttons keep "my" while sentences say "your".
+*Lives in:* `docs/product/briefs/021-plain-words-calmer-screens.md`.
