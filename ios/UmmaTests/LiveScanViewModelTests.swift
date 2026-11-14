@@ -692,7 +692,8 @@ final class LiveScanViewModelTests: XCTestCase {
 
         factory = FakeLiveScanTransportFactory()
         service = FakeLiveScanBasketService()
-        service.addHandler = { _ in throw conflict("The basket is full; finish this scan and start another") }
+        let full = conflict("The basket is full; finish this scan and start another")
+        service.addHandler = { _ in throw full }
         let model = makeModel()
         await model.start()
         await report("eggs", on: factory.made[0])
