@@ -80,7 +80,8 @@ final class LiveScanBasketAPITests: XCTestCase {
 
         let finished = try await client.finishLiveScan(scanID: created.id)
         XCTAssertEqual(finished.saved.map(\.rawLabel), ["eggs"])
-        XCTAssertEqual(finished.saved.first?.source, .other, "`live` is a source this build shows neutrally")
+        XCTAssertEqual(finished.saved.first?.source, .live)
+        XCTAssertEqual(finished.saved.first?.source.badge, "Auto-added")
         XCTAssertEqual(finished.review.map(\.reason), [.unsure, .inPantry, .unknown])
         XCTAssertEqual(finished.review.map(\.status), [.new, .inPantry, .unknown], "an unknown status never crashes")
         XCTAssertEqual(finished.review.last?.confidence, .unknown)

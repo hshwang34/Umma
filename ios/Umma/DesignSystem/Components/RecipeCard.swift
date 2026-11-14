@@ -190,6 +190,7 @@ enum RecipeFormatting {
         let fraction = value - whole
         let fractionGlyph: String? = {
             switch fraction {
+            case 0.124...0.126: return "⅛"
             case 0.24...0.26: return "¼"
             case 0.32...0.34: return "⅓"
             case 0.49...0.51: return "½"

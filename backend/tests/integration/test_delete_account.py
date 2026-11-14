@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models as m
 from app.db.base import Base
+from app.domains.users import deletion
 from app.domains.users.deletion import FORMER_CREATOR_NAME, FORMER_CREATOR_PROVIDER
 from tests.conftest import bearer
 
@@ -400,3 +401,206 @@ async def test_nobody_can_sign_in_as_the_former_creator(
     # It has no email, so the dev code flow (keyed by email) can never resolve to it.
     assert former.email is None
     assert (await client.get("/v1/me", headers=saver)).status_code == 200
+
+
+async def test_a_kept_recipe_serves_nothing_of_its_deleted_creator(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    creator = await bearer(client, "mina.park@example.com")
+    saver = await bearer(client, "saver@example.com")
+    creator_id = await _user_id(db_session, "mina.park@example.com")
+    saver_id = await _user_id(db_session, "saver@example.com")
+    profile = await db_session.get(m.User, creator_id)
+    assert profile is not None
+    profile.display_name = "Mina Park-Unique"
+    profile.bio = "Seoul home cook, bio-unique-text"
+    profile.avatar_url = "https://avatars.example/mina-unique.jpg"
+
+    recipe, version = await _recipe(db_session, creator_id, "kept-kimchi-stew")
+    recipe.stock_photo_url = "https://images.pexels.com/photos/1/stock.jpg"
+    recipe.cover_image_url = "https://creator-site.example/cover-unique.jpg"
+    clip = m.RecipeMedia(
+        id=uuid.uuid4(),
+        owner_user_id=creator_id,
+        recipe_id=recipe.id,
+        version_id=version.id,
+        media_kind=m.MediaKind.STEP_CLIP,
+        status="ready",
+        storage_key=f"u/{creator_id}/clip-unique.mp4",
+    )
+    cover = m.RecipeMedia(
+        id=uuid.uuid4(),
+        owner_user_id=creator_id,
+        recipe_id=recipe.id,
+        version_id=version.id,
+        media_kind=m.MediaKind.COVER_IMAGE,
+        status="ready",
+        storage_key=f"u/{creator_id}/cover-unique.jpg",
+    )
+    db_session.add_all([clip, cover])
+    await db_session.flush()
+    stored_steps = [
+        {
+            "id": "s1",
+            "order": 0,
+            "instruction": "Simmer the stew.",
+            "source_clip_id": str(clip.id),
+            "source_start_ms": 1000,
+            "source_end_ms": 9000,
+        }
+    ]
+    # Versions are append-only; the test writes the published content with the operator switch.
+    await db_session.execute(text("SET LOCAL umma.unlock_versions = 'on'"))
+    version.step_json = stored_steps
+    version.cover_media_id = cover.id
+    version.cover_image_url = "https://creator-site.example/cover-unique.jpg"
+    db_session.add(m.Save(id=uuid.uuid4(), user_id=saver_id, recipe_id=recipe.id))
+    await db_session.commit()
+
+    before = (await client.get(f"/v1/recipes/{recipe.id}", headers=saver)).json()
+    assert before["steps"][0]["source_clip_id"] == str(clip.id)
+    assert before["creator"]["display_name"] == "Mina Park-Unique"
+
+    assert (await client.delete("/v1/me", headers=creator)).status_code == 204
+
+    forbidden = [
+        str(creator_id),
+        "Mina Park-Unique",
+        "mina.park",
+        "bio-unique-text",
+        "mina-unique.jpg",
+        "creator-site.example",
+        str(clip.id),
+        str(cover.id),
+        "clip-unique",
+        "cover-unique",
+    ]
+    reads = [
+        f"/v1/recipes/{recipe.id}",
+        f"/v1/recipe-versions/{version.id}",
+        "/v1/me/saved",
+        "/v1/recipes",
+        "/v1/feed/for-you",
+    ]
+    for path in reads:
+        response = await client.get(path, headers=saver)
+        assert response.status_code == 200, (path, response.text)
+        for needle in forbidden:
+            assert needle not in response.text, (path, needle)
+
+    detail = (await client.get(f"/v1/recipes/{recipe.id}", headers=saver)).json()
+    assert detail["creator"]["display_name"] == FORMER_CREATOR_NAME
+    assert detail["creator_id"] == detail["creator"]["id"] != str(creator_id)
+    step = detail["steps"][0]
+    assert step["instruction"] == "Simmer the stew."
+    assert step["source_clip_id"] is None and step["source_start_ms"] is None
+    # The creator's own cover link is not served; the stock photo (not theirs) is.
+    assert detail["cover_image_url"] == "https://images.pexels.com/photos/1/stock.jpg"
+    # The dead media ids resolve to nothing, and the old profile is gone.
+    for media_id in (clip.id, cover.id):
+        assert (await client.get(f"/v1/media/{media_id}", headers=saver)).status_code == 404
+    assert (await client.get(f"/v1/creators/{creator_id}", headers=saver)).status_code == 404
+
+    # The published version row itself was not rewritten (it is immutable); only reads changed.
+    stored = await db_session.scalar(
+        select(m.RecipeVersion.step_json).where(m.RecipeVersion.id == version.id)
+    )
+    assert stored == stored_steps
+
+
+async def test_someone_elses_substitution_suggestion_keeps_the_recipe(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    creator = await bearer(client, "creator@example.com")
+    await bearer(client, "cook@example.com")
+    creator_id = await _user_id(db_session, "creator@example.com")
+    cook_id = await _user_id(db_session, "cook@example.com")
+    _, version = await _recipe(db_session, creator_id, "has-a-suggestion")
+    unused, _ = await _recipe(db_session, creator_id, "has-nothing")
+    suggestion = m.SubstitutionSuggestionRecord(
+        id=uuid.uuid4(),
+        owner_user_id=cook_id,
+        recipe_version_id=version.id,
+        ingredient_ref="ing-1",
+        expires_at=LATER,
+    )
+    # The creator's own suggestion on their other recipe does not count.
+    own = m.SubstitutionSuggestionRecord(
+        id=uuid.uuid4(),
+        owner_user_id=creator_id,
+        recipe_version_id=unused.latest_version_id,
+        ingredient_ref="ing-1",
+        expires_at=LATER,
+    )
+    db_session.add_all([suggestion, own])
+    await db_session.commit()
+
+    assert (await client.delete("/v1/me", headers=creator)).status_code == 204
+
+    slugs = (await db_session.execute(select(m.Recipe.slug))).scalars().all()
+    assert slugs == ["has-a-suggestion"]
+    left = (await db_session.execute(select(m.SubstitutionSuggestionRecord.id))).scalars().all()
+    assert left == [suggestion.id]
+
+
+async def _pinned_recipe(client: AsyncClient, db_session: AsyncSession) -> dict[str, str]:
+    """A creator whose only recipe another cook has a session on."""
+    creator = await bearer(client, "creator@example.com")
+    await bearer(client, "cook@example.com")
+    creator_id = await _user_id(db_session, "creator@example.com")
+    _, version = await _recipe(db_session, creator_id, "being-cooked")
+    db_session.add(
+        m.CookingSession(
+            id=uuid.uuid4(),
+            owner_user_id=await _user_id(db_session, "cook@example.com"),
+            recipe_version_id=version.id,
+        )
+    )
+    await db_session.commit()
+    return creator
+
+
+async def test_a_session_started_during_deletion_is_kept_not_a_500(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    creator = await _pinned_recipe(client, db_session)
+    real = deletion._recipes_others_depend_on
+    calls = 0
+
+    async def stale_first(session: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
+        # First look: as if the cook's session had not been started yet (the race).
+        nonlocal calls
+        calls += 1
+        return [] if calls == 1 else await real(session, user_id)
+
+    monkeypatch.setattr(deletion, "_recipes_others_depend_on", stale_first)
+    response = await client.delete("/v1/me", headers=creator)
+    assert response.status_code == 204, response.text
+    assert calls == 2  # the RESTRICT violation was retried with a fresh check
+    assert (await db_session.execute(select(m.Recipe.slug))).scalars().all() == ["being-cooked"]
+    assert await db_session.scalar(select(func.count()).select_from(m.CookingSession)) == 1
+    emails = (await db_session.execute(select(m.User.email))).scalars().all()
+    assert "creator@example.com" not in emails
+
+
+async def test_deletion_that_keeps_colliding_is_a_retryable_error_and_deletes_nothing(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    creator = await _pinned_recipe(client, db_session)
+
+    async def always_stale(session: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
+        return []
+
+    monkeypatch.setattr(deletion, "_recipes_others_depend_on", always_stale)
+    response = await client.delete("/v1/me", headers=creator)
+    assert response.status_code == 409, response.text
+    error = response.json()["error"]
+    assert error["code"] == "ACCOUNT_DELETION_BUSY" and error["retryable"] is True
+    assert error["correlation_id"]
+    # Nothing was deleted: the account, its recipe and the cook's session are all still there.
+    assert (await client.get("/v1/me", headers=creator)).status_code == 200
+    assert await db_session.scalar(select(func.count()).select_from(m.Recipe)) == 1
+    assert await db_session.scalar(select(func.count()).select_from(m.CookingSession)) == 1
+    # With the real check back, the retry the phone is told to make succeeds.
+    monkeypatch.undo()
+    assert (await client.delete("/v1/me", headers=creator)).status_code == 204

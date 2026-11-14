@@ -57,7 +57,9 @@ async def test_empty_pantry_shape(client: AsyncClient) -> None:
         "items",
         "computed_at",
         "key_ingredient_ref",
+        "servings",
     }
+    assert result["servings"] == 4  # omitted → the recipe's own
     assert result["key_ingredient_ref"] == "ing-1"  # chicken thighs: in the title, a protein
     assert [i["ingredient_ref"] for i in result["items"] if i["is_key"]] == ["ing-1"]
     assert result["recipe_version_id"] == str(GOCHUJANG_V1)
@@ -301,3 +303,68 @@ async def test_ingredient_seed_is_idempotent(db_session) -> None:  # type: ignor
     assert row is not None and "green onion" in row.aliases_json
     assert row.qualifiers == ["fresh", "raw"]
     assert datetime.now(UTC) >= row.updated_at
+
+
+# --- Brief 020: fit for the servings on the dial ---------------------------------------------
+
+
+async def fit_for(client: AsyncClient, h: dict[str, str], version_id: object, body: dict) -> dict:
+    r = await client.post(f"/v1/recipe-versions/{version_id}/fit", json=body, headers=h)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _without_clock(result: dict) -> dict:
+    return {k: v for k, v in result.items() if k != "computed_at"}
+
+
+@pytest.mark.usefixtures("seeded")
+async def test_omitted_servings_changes_nothing(client: AsyncClient) -> None:
+    """No body, an empty body, null and the recipe's own servings are the same answer, and the
+    required amounts are exactly the creator's."""
+    h = await bearer(client, "a@example.com")
+    await add(client, h, m("egg", 1, "count"), m("cooked rice", 2, "cup"), m("soy sauce"))
+    url = f"/v1/recipe-versions/{KIMCHI_V1}/fit"
+    bare = _without_clock((await client.post(url, headers=h)).json())
+    assert bare["servings"] == 2
+    for body in ({}, {"servings": None}, {"servings": 2}):
+        assert _without_clock(await fit_for(client, h, KIMCHI_V1, body)) == bare
+    version = (await client.get(f"/v1/recipe-versions/{KIMCHI_V1}", headers=h)).json()
+    written = {i["id"]: i["quantity"] for i in version["ingredients"]}
+    assert {i["ingredient_ref"]: i["required"]["quantity"] for i in bare["items"]} == written
+    assert by_ref(bare)["ing-10"]["reason"] == "You have 1 egg; the recipe needs 2."
+
+
+@pytest.mark.usefixtures("seeded")
+async def test_fit_is_judged_against_scaled_amounts(client: AsyncClient) -> None:
+    h = await bearer(client, "a@example.com")
+    await add(client, h, m("egg", 1, "count"), m("kimchi", 1, "cup"))
+    for_two = by_ref(await fit_for(client, h, KIMCHI_V1, {}))
+    assert for_two["ing-10"]["status"] == "uncertain"  # 1 egg, needs 2
+    assert for_two["ing-2"]["status"] == "uncertain"  # 1 cup, needs 1.5
+
+    result = await fit_for(client, h, KIMCHI_V1, {"servings": 1})
+    assert result["servings"] == 1
+    for_one = by_ref(result)
+    assert for_one["ing-10"]["status"] == "available"
+    assert for_one["ing-10"]["reason"] == "You have 1 egg; the recipe needs 1."
+    assert for_one["ing-10"]["required"] == {"quantity": 1.0, "unit": "count"}
+    assert for_one["ing-2"]["status"] == "available"
+    assert for_one["ing-2"]["required"] == {"quantity": 0.75, "unit": "cup"}
+    assert for_one["ing-1"]["required"] == {"quantity": 1.5, "unit": "cup"}
+    assert for_one["ing-6"]["required"]["quantity"] == 1.0  # 2 cloves for 2 → 1 for 1
+
+    for_six = by_ref(await fit_for(client, h, KIMCHI_V1, {"servings": 6}))
+    assert for_six["ing-10"]["reason"] == "You have 1 egg; the recipe needs 6."
+    assert for_six["ing-1"]["required"] == {"quantity": 9.0, "unit": "cup"}
+
+
+@pytest.mark.usefixtures("seeded")
+@pytest.mark.parametrize("servings", [0, -1, 7, 8, 100, "2", 2.5, True])
+async def test_servings_must_be_a_dial_stop(client: AsyncClient, servings: object) -> None:
+    h = await bearer(client, "a@example.com")
+    r = await client.post(
+        f"/v1/recipe-versions/{KIMCHI_V1}/fit", json={"servings": servings}, headers=h
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"

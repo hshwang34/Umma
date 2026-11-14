@@ -44,6 +44,7 @@ from app.db.models import PantryItem, Recipe, RecipeVersion, SubstitutionSuggest
 from app.domains import usage
 from app.domains.matching.dictionary import IngredientDictionary, clean, load_dictionary
 from app.domains.matching.normalize import alternatives, normalize
+from app.domains.recipes import scaling
 from app.domains.recipes import service as recipes_service
 from app.domains.recipes.schemas import IngredientOut, RecipeContent, StepOut
 from app.domains.recipes.versions import version_meta
@@ -110,7 +111,12 @@ class VersionContext:
         return next((i for i in self.ingredients if i.id == ref), None)
 
 
-def context_from(version: RecipeVersion, recipe: Recipe) -> VersionContext:
+def context_from(
+    version: RecipeVersion, recipe: Recipe, servings: int | None = None
+) -> VersionContext:
+    """``servings`` (brief 020) scales the ingredient amounts only: a cooking session's view.
+    ``None`` or the version's own servings gives exactly what the creator wrote. Steps, notes
+    and warnings are never scaled."""
     warnings = version.warning_json or {}
     content = RecipeContent.model_validate(
         {
@@ -121,11 +127,23 @@ def context_from(version: RecipeVersion, recipe: Recipe) -> VersionContext:
             "dietary_warnings": warnings.get("dietary_warnings", []),
         }
     )
+    ingredients = content.ingredients
+    if servings is not None and servings != version.servings:
+        ingredients = [
+            i.model_copy(
+                update={
+                    "quantity": scaling.scale_quantity(
+                        i.quantity, i.unit, original_servings=version.servings, servings=servings
+                    )
+                }
+            )
+            for i in ingredients
+        ]
     return VersionContext(
         version_id=version.id,
         recipe_id=recipe.id,
         title=version_meta(recipe, version)["title"],
-        ingredients=content.ingredients,
+        ingredients=ingredients,
         steps=sorted(content.steps, key=lambda s: s.order),
         creator_notes=content.creator_notes,
         dietary_warnings=content.dietary_warnings,

@@ -93,6 +93,65 @@ struct FitRowPresentation: Identifiable, Equatable {
     }
 }
 
+/// The key-ingredient card at the top of Pantry fit (brief 017): the dish's main ingredient and
+/// when Umma last saw it. Both answers are the cook's tap; nothing is removed without one.
+struct KeyIngredientCard: Equatable {
+    enum State: Equatable {
+        /// In the pantry: "Still have it" / "I don’t have that".
+        case ask
+        /// Confirmed today: nothing to ask, but it can still be taken out.
+        case seenToday
+        /// Not in the pantry (never added, or just removed here).
+        case notInPantry
+    }
+
+    let ingredientRef: String
+    let name: String
+    let pantryItemId: UUID?
+    let state: State
+    let title: String
+    let detail: String
+    let canFindSwap: Bool
+
+    init?(fit: PantryFit, now: Date, swapsEnabled: Bool, justRemoved: Bool = false, onShoppingList: Bool = false) {
+        guard let item = fit.items.first(where: { $0.isKey == true }) else { return nil }
+        ingredientRef = item.ingredientRef
+        name = item.name
+        pantryItemId = item.pantryItemId
+        let shown = item.name.lowercased()
+        if let seen = item.lastConfirmedAt, item.pantryItemId != nil {
+            let days = PantryFreshness.days(since: seen, now: now)
+            state = days == 0 ? .seenToday : .ask
+            title = days == 0 ? "You have \(shown)" : "Do you still have \(shown)?"
+            detail = "The main ingredient of this dish. \(Self.lastSeen(days))."
+            canFindSwap = false
+        } else if item.pantryItemId != nil {
+            state = .ask
+            title = "Do you still have \(shown)?"
+            detail = "The main ingredient of this dish."
+            canFindSwap = false
+        } else {
+            state = .notInPantry
+            title = justRemoved ? "Removed \(shown) from your pantry" : "No \(shown) in your pantry"
+            detail = justRemoved && onShoppingList
+                ? "It’s on your shopping list now. You can look for a swap for tonight."
+                : "It’s the main ingredient of this dish. You can look for a swap, or add it if you have some."
+            canFindSwap = swapsEnabled
+        }
+    }
+
+    static func lastSeen(_ days: Int) -> String {
+        switch days {
+        case 0: return "Last seen today"
+        case 1: return "Last seen yesterday"
+        default: return "Last seen \(days) days ago"
+        }
+    }
+
+    static let stillHaveTitle = "Still have it"
+    static let dontHaveTitle = "I don’t have that"
+}
+
 struct FitSection: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
         case available, uncertain, missing, optional
@@ -135,6 +194,8 @@ final class PantryFitViewModel {
 
     let recipeVersionId: UUID
     let recipeTitle: String
+    /// Brief 020: the servings on the recipe page's dial. Nil means the recipe's own.
+    let servings: ServingsChoice?
     private(set) var phase: Phase = .loading
     /// Pantry snapshot used only to tell which matched items are stale.
     private(set) var pantryItems: [PantryItem] = []
@@ -143,6 +204,8 @@ final class PantryFitViewModel {
 
     private let service: PantryService
     private let cooking: CookingService?
+    /// Brief 017: "I don’t have that" also puts the key ingredient on the shopping list.
+    private let shopping: ShoppingService?
     private let now: @MainActor () -> Date
     var onPantryChanged: (@MainActor () -> Void)?
 
@@ -155,12 +218,14 @@ final class PantryFitViewModel {
     var isStarting: Bool { starter?.isStarting ?? false }
     var startError: String? { starter?.errorMessage }
 
-    init(recipeVersionId: UUID, recipeTitle: String, service: PantryService, cooking: CookingService? = nil,
-         now: @escaping @MainActor () -> Date = { Date() }) {
+    init(recipeVersionId: UUID, recipeTitle: String, servings: ServingsChoice? = nil, service: PantryService,
+         cooking: CookingService? = nil, shopping: ShoppingService? = nil, now: @escaping @MainActor () -> Date = { Date() }) {
         self.recipeVersionId = recipeVersionId
         self.recipeTitle = recipeTitle
+        self.servings = servings
         self.service = service
         self.cooking = cooking
+        self.shopping = shopping
         starter = cooking.map { SessionStarter(service: $0) }
         self.now = now
     }
@@ -178,7 +243,7 @@ final class PantryFitViewModel {
         let generation = loadGeneration
         if fit == nil { phase = .loading }
         actionError = nil
-        async let fitResult = service.fit(recipeVersionId: recipeVersionId)
+        async let fitResult = service.fit(recipeVersionId: recipeVersionId, servings: servings?.servings)
         // Staleness is a nice-to-have: a failed pantry read only hides "Still have it".
         async let pantryResult = try? service.listPantry()
         do {
@@ -214,6 +279,15 @@ final class PantryFitViewModel {
 
     var coverageAccessibilityLabel: String? {
         coverageText.map { "\($0) in your pantry. This is a guide, not a guarantee." }
+    }
+
+    /// "For 2 servings · Scaled from 4" under the headline, only when the amounts are scaled.
+    /// Says what the server computed for when it tells us, so the line never disagrees with the fit.
+    var servingsText: String? {
+        guard let servings, servings.isScaled, fit != nil else { return nil }
+        let computedFor = fit?.servings ?? servings.servings
+        guard computedFor != servings.original else { return nil }
+        return "For \(ServingsDial.count(computedFor)) · \(ServingsDial.scaledFrom(servings.original))"
     }
 
     var missingCount: Int { requiredItems.filter { $0.status == .missing }.count }
@@ -263,6 +337,46 @@ final class PantryFitViewModel {
             FitSection(kind: .optional, rows: rows { $0.optional || $0.status == .optionalMissing }),
         ]
         return all.filter { !$0.rows.isEmpty }
+    }
+
+    /// Brief 017: the main ingredient, first on the screen. Nil when the server names none.
+    var keyIngredient: KeyIngredientCard? {
+        guard let fit else { return nil }
+        return KeyIngredientCard(fit: fit, now: now(), swapsEnabled: cooking != nil,
+                                 justRemoved: removedKeyRef != nil, onShoppingList: keyOnShoppingList)
+    }
+
+    /// The removed key ingredient is on the shopping list (the server confirmed the add).
+    private var keyOnShoppingList = false
+
+    /// The key ingredient the cook just said they don't have, so the card can say what happened.
+    private var removedKeyRef: String?
+
+    /// "I don’t have that" on the key-ingredient card: the pantry item is deleted on this tap
+    /// and on nothing else. The fit is re-read through the revision bump.
+    func removeKeyIngredient() async {
+        guard let card = keyIngredient, let id = card.pantryItemId, !busyItemIds.contains(id) else { return }
+        busyItemIds.insert(id)
+        actionError = nil
+        defer { busyItemIds.remove(id) }
+        do {
+            try await service.deletePantryItem(id: id)
+        } catch let error as APIError where error.isNotFound {
+            // Already gone (deleted elsewhere): the answer is the same.
+        } catch {
+            actionError = "Couldn’t remove \(card.name): \(error.pantryMessage)"
+            return
+        }
+        removedKeyRef = card.ingredientRef
+        if let shopping {
+            do {
+                _ = try await shopping.addShoppingItem(name: card.name, reason: .ranOut, recipeVersionId: recipeVersionId)
+                keyOnShoppingList = true
+            } catch {
+                actionError = "Removed \(card.name), but couldn’t add it to your shopping list: \(error.pantryMessage)"
+            }
+        }
+        onPantryChanged?()
     }
 
     // MARK: Actions
@@ -334,11 +448,15 @@ final class PantryFitViewModel {
         }
     }
 
+    /// What the Start tap asks the cook to confirm (brief 020). Nil when no servings were chosen.
+    var startConfirmation: StartConfirmation? { servings.map(StartConfirmation.init) }
+
     /// **Start cooking**: `POST /sessions` pinning this version with the approved swaps. The
     /// returned Session (status `created`) is started by the cooking screen on the same tap.
     func startCooking(epoch: Int? = nil) async -> CookingSession? {
         guard let starter else { return nil }
-        return await starter.start(recipeVersionId: recipeVersionId, adaptations: approvedSwapList.map(\.input), epoch: epoch)
+        return await starter.start(recipeVersionId: recipeVersionId, adaptations: approvedSwapList.map(\.input),
+                                   servings: servings?.servings, epoch: epoch)
     }
 
     /// Cautions by ingredient ref, handed to the cooking screen.

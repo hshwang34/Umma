@@ -11,8 +11,9 @@ protocol PreferencesService: Sendable {
 protocol CookingService: Sendable {
     func suggestSubstitutions(recipeVersionId: UUID, ingredientRef: String) async throws -> SubstitutionResult
 
-    /// `POST /sessions` → 201 (`status: created`, `revision: 0`).
-    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput]) async throws -> CookingSession
+    /// `POST /sessions` → 201 (`status: created`, `revision: 0`). `servings` (brief 020) is fixed
+    /// here and cannot be changed afterwards; nil means the recipe's own.
+    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int?) async throws -> CookingSession
     /// `GET /sessions?status=active`, newest first.
     func activeSessions() async throws -> [SessionSummary]
     func session(id: UUID) async throws -> CookingSession
@@ -28,6 +29,12 @@ protocol CookingService: Sendable {
     /// `GET /recipe-versions/{id}/my-variation`; a 404 (none saved) is `nil`, not an error.
     func myVariation(recipeVersionId: UUID) async throws -> PrivateVariation?
     func deleteMyVariation(recipeVersionId: UUID) async throws
+}
+
+extension CookingService {
+    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput]) async throws -> CookingSession {
+        try await createSession(recipeVersionId: recipeVersionId, adaptations: adaptations, servings: nil)
+    }
 }
 
 extension APIClient: PreferencesService, CookingService {
@@ -49,8 +56,8 @@ extension APIClient: PreferencesService, CookingService {
         return try await send(endpoint)
     }
 
-    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput]) async throws -> CookingSession {
-        let body = try encoder.encode(CreateSessionRequest(recipeVersionId: recipeVersionId, adaptations: adaptations))
+    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int?) async throws -> CookingSession {
+        let body = try encoder.encode(CreateSessionRequest(recipeVersionId: recipeVersionId, adaptations: adaptations, servings: servings))
         return try await send(.post("/v1/sessions", body: body))
     }
 

@@ -16,6 +16,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    StrictInt,
     StringConstraints,
     model_validator,
 )
@@ -23,6 +24,7 @@ from pydantic import (
 from app.ai.notice import AINotice, notice_field
 from app.domains.recipes.draft_schemas import check_text
 from app.domains.recipes.schemas import RecipeDetail
+from app.domains.sessions.missing import MissingIngredientOut
 from app.domains.sessions.oracle import CommandType
 
 MAX_TIMER_SECONDS = 24 * 3600
@@ -76,6 +78,9 @@ class AdaptationIn(_Strict):
 class SessionCreateIn(_Strict):
     recipe_version_id: uuid.UUID
     adaptations: list[AdaptationIn] = Field(default_factory=list, max_length=30)
+    # Brief 020: the servings on the dial when the cook tapped Start. Omitted or null means the
+    # recipe's own. It can only be set here: no command changes it afterwards.
+    servings: StrictInt | None = None
 
 
 class TimerIn(_Strict):
@@ -188,6 +193,13 @@ class SessionOut(BaseModel):
     step_index: int
     steps_count: int
     revision: int
+    # Brief 020. ``servings`` is what this session cooks for, fixed at creation.
+    # ``original_servings`` is the pinned version's own. When they differ, ``amounts_scaled``
+    # is true and ``recipe.ingredients`` carries the scaled amounts ("Scaled from N"); step
+    # text, times and ``recipe.servings`` stay the creator's.
+    servings: int
+    original_servings: int
+    amounts_scaled: bool
     recipe: RecipeDetail
     adaptations: list[AdaptationOut]
     steps: list[SessionStepOut]
@@ -245,6 +257,8 @@ class AskOut(BaseModel):
     proposed_action: ProposedActionOut | None
     requires_confirmation: bool
     ai_notice: AINotice | None = notice_field()  # brief 007; omitted unless set
+    # Brief 017: the "I don't have that" offer. A proposal only; omitted unless set.
+    missing_ingredient: MissingIngredientOut | None = notice_field()
 
 
 VISUAL_LABEL = "Visual estimate — not verified"

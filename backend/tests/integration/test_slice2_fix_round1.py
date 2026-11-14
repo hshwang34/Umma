@@ -130,7 +130,12 @@ class StubProvider(MockAIProvider):
         if self.engine is not None:
             async with self.engine.connect() as conn:
                 n = await conn.scalar(
-                    text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'")
+                    # This database only: pg_locks is server-wide, and another suite running
+                    # on the same Postgres holds advisory locks of its own.
+                    text(
+                        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database ="
+                        " (SELECT oid FROM pg_database WHERE datname = current_database())"
+                    )
                 )
                 self.advisory_locks_during_call.append(int(n or 0))
         step = self.behaviour[min(self.calls, len(self.behaviour)) - 1]

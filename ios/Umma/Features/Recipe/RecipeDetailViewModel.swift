@@ -31,8 +31,9 @@ final class RecipeDetailViewModel {
     /// tell the Saved tab to refresh.
     var onSavedChanged: (@MainActor (UUID, Bool) -> Void)?
 
-    init(recipeId: UUID, card: RecipeCard? = nil, service: RecipeService) {
+    init(recipeId: UUID, card: RecipeCard? = nil, defaultServings: Int? = nil, service: RecipeService) {
         self.recipeId = recipeId
+        self.defaultServings = defaultServings
         self.card = card
         self.service = service
         if let saved = card?.saved { isSaved = saved }
@@ -49,6 +50,44 @@ final class RecipeDetailViewModel {
     var versionNumber: Int? { detail?.versionNumber ?? card?.versionNumber }
     var summary: String? { detail?.summary ?? card?.summary }
     var servings: Int? { detail?.servings ?? card?.servings }
+
+    // MARK: Servings (brief 020)
+
+    /// What the cook dialled on this visit. Nil until they touch the dial: the recipe then opens
+    /// at the Profile default, or its own servings when none is set. Never saved (a dial change
+    /// is for this visit only), and a published version is never changed.
+    private(set) var chosenServings: Int?
+    /// Profile → Default servings. Nil means "the recipe's own".
+    var defaultServings: Int?
+
+    /// The servings control, once the recipe has loaded.
+    var dial: ServingsDial? {
+        detail.flatMap { ServingsDial(original: $0.servings, chosen: chosenServings ?? defaultServings) }
+    }
+
+    /// Ingredient amounts for the servings on the dial. At the recipe's own servings these are
+    /// exactly the creator's.
+    var ingredients: [Ingredient] {
+        guard let detail, let dial else { return detail?.ingredients ?? [] }
+        return detail.ingredients.map { $0.scaled(originalServings: dial.original, servings: dial.servings) }
+    }
+
+    /// A value that is not a stop on this recipe's dial is ignored.
+    func setServings(_ servings: Int) {
+        guard let dial, dial.stops.contains(servings) else { return }
+        chosenServings = servings
+    }
+
+    func stepServings(up: Bool) {
+        guard let next = up ? dial?.higher : dial?.lower else { return }
+        chosenServings = next
+    }
+
+    /// One tap back to the creator's amounts.
+    func resetServings() {
+        guard let dial else { return }
+        chosenServings = dial.original
+    }
     var prepMinutes: Int? { detail?.prepMinutes ?? card?.prepMinutes }
     var cookMinutes: Int? { detail?.cookMinutes ?? card?.cookMinutes }
     var coverImageURL: URL? { detail?.coverImageURL ?? card?.coverImageURL }
