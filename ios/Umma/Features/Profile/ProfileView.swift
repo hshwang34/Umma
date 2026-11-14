@@ -9,6 +9,9 @@ struct ProfileView: View {
     @State private var openError: String?
     @State private var recipeToUnpublish: MyRecipe?
     @State private var draftToDelete: DraftSummary?
+    // Brief 014: New recipe → chooser → record while cooking.
+    @State private var showNewRecipeChooser = false
+    @State private var chosenNewRecipe: NewRecipeOption.Kind?
 
     var body: some View {
         NavigationStack {
@@ -79,11 +82,18 @@ struct ProfileView: View {
         .fullScreenCover(item: $editor, onDismiss: { Task { await model?.refresh() } }) { editor in
             DraftEditorView(model: editor)
         }
+        .sheet(isPresented: $showNewRecipeChooser, onDismiss: openChosenNewRecipe) {
+            NewRecipeChooser { chosenNewRecipe = $0 }
+        }
         .task(id: environment.requestNewRecipe) {
             // Brief 015: onboarding's "Record your first recipe" lands here.
             guard environment.requestNewRecipe else { return }
             environment.requestNewRecipe = false
-            await createRecipe()
+            if CaptureFeature.isEnabled() {
+                showNewRecipeChooser = true
+            } else {
+                await createRecipe()
+            }
         }
     }
 
@@ -93,10 +103,14 @@ struct ProfileView: View {
     private var myRecipesSection: some View {
         Section {
             Button {
-                Task { await createRecipe() }
+                if CaptureFeature.isEnabled() {
+                    showNewRecipeChooser = true
+                } else {
+                    Task { await createRecipe() }
+                }
             } label: {
                 HStack {
-                    Label("Create recipe", systemImage: "plus.circle.fill")
+                    Label("New recipe", systemImage: "plus.circle.fill")
                     Spacer()
                     if isOpeningEditor { ProgressView() }
                 }
@@ -288,6 +302,16 @@ struct ProfileView: View {
             editor = try await DraftEditorViewModel.createNew(service: environment.api, creator: creator)
         } catch {
             openError = (error as? APIError)?.userMessage ?? error.localizedDescription
+        }
+    }
+
+    private func openChosenNewRecipe() {
+        let choice = chosenNewRecipe
+        chosenNewRecipe = nil
+        switch choice {
+        case .typeIn: Task { await createRecipe() }
+        // The recording screen arrives in the next PR (the flag is off until then).
+        case .recordVoice, .recordCamera, nil: break
         }
     }
 
