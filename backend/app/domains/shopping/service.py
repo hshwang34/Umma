@@ -11,8 +11,9 @@ with ``ingredient_id`` NULL. Nothing here touches the pantry.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -21,8 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ShoppingCheckedBy, ShoppingItem, ShoppingReason, User
 from app.domains.matching.dictionary import IngredientDictionary, load_dictionary
-from app.domains.matching.normalize import normalize
+from app.domains.matching.fit import PantryEntry, RecipeIngredient, fit
+from app.domains.matching.normalize import alternatives, conjuncts, normalize
 from app.domains.ownership import get_owned_or_404
+from app.domains.recipes.schemas import IngredientOut
 from app.domains.shopping.schemas import NAME_MAX
 
 CHECKED_VISIBLE_FOR = timedelta(days=14)
@@ -121,6 +124,47 @@ async def add_missing(
         if new:
             created.append(row)
     return created
+
+
+def missing_at_start(
+    ingredients: Sequence[IngredientOut],
+    pantry_snapshot: Sequence[Mapping[str, Any]],
+    swapped_refs: set[str],
+    dictionary: IngredientDictionary,
+    now: datetime,
+) -> list[str]:
+    """Names of the required ingredients a cooking session started without and never swapped.
+
+    Recomputed with the Pantry fit rules against the session's ``pantry_snapshot_json`` (the
+    pantry items relevant to the recipe when the session was created). Only presence counts:
+    the snapshot keeps names, not amounts, so "too little" is never missing. Optional
+    ingredients and ingredients with an approved swap are left out. Each part of a "salt and
+    pepper" line is judged on its own; an "X or Y" line is named by its first alternative. Pure.
+    """
+    pantry = [
+        PantryEntry(
+            id=uuid.UUID(str(p["pantry_item_id"])),
+            raw_label=str(p["normalized_name"]),
+            normalized_name=str(p["normalized_name"]),
+            quantity=None,
+            unit=None,
+            last_confirmed_at=now,
+        )
+        for p in pantry_snapshot
+    ]
+    parts = [
+        RecipeIngredient(id=ing.id, name=part)
+        for ing in ingredients
+        if not ing.optional and ing.id not in swapped_refs
+        for part in conjuncts(ing.name, dictionary)
+    ]
+    result = fit(uuid.UUID(int=0), parts, pantry, dictionary, now)
+    names: list[str] = []
+    for item in result.items:
+        if item.status == "missing":
+            options = alternatives(item.name)
+            names.append(options[0] if len(options) > 1 else item.name)
+    return names
 
 
 async def _owned(session: AsyncSession, user: User, item_id: uuid.UUID) -> ShoppingItem:
