@@ -105,6 +105,33 @@ class Settings(BaseSettings):
     live_tokens_per_user_per_hour: int = Field(default=60, ge=0)
     live_token_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
 
+    # Paid server voice (brief 012 PR 2, DECISIONS #26): Deepgram speech-to-text and turn
+    # detection, ElevenLabs voice. Keys are optional; without them the voice routes answer
+    # "unavailable" and the phone stays on the on-device (Free) pipeline. Backend only.
+    # Master switch, off by default: server voice spends money, so it stays dark (routes answer
+    # VOICE_UNAVAILABLE even with keys set) until the PM's go (DECISIONS #26). It gates only
+    # server voice, never the Free/Paid entitlement other server AI features read.
+    paid_voice_enabled: bool = False
+    deepgram_api_key: SecretStr | None = None
+    deepgram_model: str = "nova-3"
+    # Deepgram turn detection: silence that ends a phrase, and the gap that ends an utterance.
+    deepgram_endpointing_ms: int = Field(default=300, ge=10, le=5000)
+    deepgram_utterance_end_ms: int = Field(default=1000, ge=1000, le=5000)
+    elevenlabs_api_key: SecretStr | None = None
+    elevenlabs_voice_id: str | None = None
+    # Flash v2.5: ElevenLabs' low-latency model (~75 ms model time), half the price of v2/v3.
+    elevenlabs_model: str = "eleven_flash_v2_5"
+    elevenlabs_output_format: Literal["pcm_16000", "pcm_22050", "pcm_24000"] = "pcm_24000"
+    voice_tts_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    # WS /v1/voice/stream limits.
+    voice_max_session_seconds: int = Field(default=60 * 60, ge=10)
+    voice_idle_timeout_seconds: int = Field(default=60, ge=5)
+    voice_max_streams_per_user: int = Field(default=1, ge=1, le=5)
+    voice_max_frame_bytes: int = Field(default=16_000, ge=640)  # 0.5 s of 16 kHz s16le mono
+    # POST /v1/voice/speak limits.
+    voice_speak_max_chars: int = Field(default=600, ge=1, le=5000)
+    voice_speak_per_minute: int = Field(default=20, ge=1)
+
     media_root: Path = BACKEND_DIR / "media"
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
@@ -182,6 +209,19 @@ class Settings(BaseSettings):
         ):
             raise ValueError("STORAGE_ENDPOINT_URL must be https:// in prod")
         return self
+
+    @property
+    def voice_stt_configured(self) -> bool:
+        if not self.paid_voice_enabled:
+            return False
+        return bool(self.deepgram_api_key and self.deepgram_api_key.get_secret_value())
+
+    @property
+    def voice_tts_configured(self) -> bool:
+        if not self.paid_voice_enabled:
+            return False
+        key = self.elevenlabs_api_key.get_secret_value() if self.elevenlabs_api_key else ""
+        return bool(key and self.elevenlabs_voice_id)
 
 
 @lru_cache

@@ -33,7 +33,7 @@ from sqlalchemy import case, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.notice import DenialReason
-from app.ai.pricing import cost_usd
+from app.ai.pricing import cost_usd, stt_cost_usd, tts_cost_usd
 from app.core.config import Settings
 from app.db.models import AIUsage
 
@@ -49,6 +49,8 @@ Capability = Literal[
     "capture",
     "capture_draft",
     "pantry_live",
+    "voice_stt",
+    "voice_tts",
 ]
 # Draft-making calls (one per video / capture session) are limited by the per-user monthly
 # extraction count instead of the $0.25 per-user day budget (brief 008, brief 014). They still
@@ -96,6 +98,41 @@ class UsageMeter:
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens + self.thinking_tokens,  # thinking bills as output
         )
+        return billed + self.unknown_usd
+
+
+@dataclass
+class VoiceMeter:
+    """Usage of one paid-voice reservation (brief 012 PR 2), priced per unit, not per token.
+
+    ``speech`` meters milliseconds of audio sent to speech-to-text; ``voice`` meters characters
+    sent to text-to-speech. In the ledger row the unit count goes in ``input_tokens`` (audio ms)
+    or ``output_tokens`` (characters), so no schema change is needed.
+    """
+
+    model: str
+    at: datetime
+    kind: Literal["speech", "voice"]
+    units: int = 0
+    attempts: int = 1
+    unknown_usd: Decimal = field(default_factory=lambda: Decimal(0))
+
+    @property
+    def input_tokens(self) -> int:
+        return self.units if self.kind == "speech" else 0
+
+    @property
+    def output_tokens(self) -> int:
+        return self.units if self.kind == "voice" else 0
+
+    thinking_tokens = 0
+
+    @property
+    def cost(self) -> Decimal:
+        if self.kind == "speech":
+            billed = stt_cost_usd(self.model, self.at, audio_ms=self.units)
+        else:
+            billed = tts_cost_usd(self.model, self.at, characters=self.units)
         return billed + self.unknown_usd
 
 
@@ -215,7 +252,9 @@ class CostGuard:
             await session.flush()
             return Reservation(id=row.id, capability=capability, model=model, ceiling=ceiling)
 
-    async def settle(self, reservation: Reservation, meter: UsageMeter, outcome: str) -> None:
+    async def settle(
+        self, reservation: Reservation, meter: UsageMeter | VoiceMeter, outcome: str
+    ) -> None:
         cost = meter.cost
         async with self._sessionmaker() as session, session.begin():
             await session.execute(
