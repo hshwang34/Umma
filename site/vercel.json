@@ -3,7 +3,7 @@
   "cleanUrls": false,
   "trailingSlash": false,
   "git": {
-    "deploymentEnabled": { "*": false, "main": true }
+    "deploymentEnabled": false
   },
   "headers": [
     {

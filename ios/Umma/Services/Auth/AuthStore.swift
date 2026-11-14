@@ -40,7 +40,18 @@ final class AuthStore {
     /// resets its cache and bumps its epoch). Called from `clearCredentials()`, from a restore that
     /// ends signed out, and when a sign-in completes for a different user than the cached one.
     var onCredentialsCleared: (@MainActor () -> Void)?
+    /// Fired when what an account left on this phone must go for good (brief 010): recorded-recipe
+    /// transcripts and their unsent writes, onboarding leftovers. The argument is the account to
+    /// forget, or nil for everything on the phone.
+    ///
+    /// Fired by a tapped sign-out, account deletion, a server change, a fresh install and a
+    /// different account signing in. Not by an expired session (401): the same person signing in
+    /// again finds their unfinished recording, which is what the capture outbox is built for.
+    var onAccountDataCleared: (@MainActor (UUID?) -> Void)?
     nonisolated static let cachedUserKey = "auth.cachedUser"
+    /// Who last signed in on this phone. It outlives an expired session, so the next sign-in
+    /// can tell "the same person again" from "someone else".
+    nonisolated static let lastUserIdKey = "auth.lastUserId"
     nonisolated static let hasLaunchedKey = "auth.hasLaunched"
 
     init(api: AuthService,
@@ -63,6 +74,7 @@ final class AuthStore {
         if !defaults.bool(forKey: Self.hasLaunchedKey) {
             defaults.set(true, forKey: Self.hasLaunchedKey)
             clearCredentials()
+            clearAccountData(of: nil)
         }
         guard tokenStore.currentToken() != nil else {
             state = .signedOut
@@ -120,7 +132,8 @@ final class AuthStore {
     /// and leaves the store signed out; no session exists to tear down.
     func signInWithApple(_ credential: AppleSignIn.Credential, nonce: SignInNonce) async throws {
         let response = try await api.signInWithApple(
-            identityToken: credential.identityToken, nonce: nonce.raw, displayName: credential.displayName)
+            identityToken: credential.identityToken, nonce: nonce.raw,
+            authorizationCode: credential.authorizationCode, displayName: credential.displayName)
         try startSession(response)
     }
 
@@ -136,9 +149,13 @@ final class AuthStore {
             // A different account: nothing of the previous one's may survive.
             onCredentialsCleared?()
         }
+        if let last = defaults.string(forKey: Self.lastUserIdKey), last != response.user.id.uuidString {
+            clearAccountData(of: nil)
+        }
         generation.advance()
         try tokenStore.save(token: response.accessToken)
         cache(response.user)
+        defaults.set(response.user.id.uuidString, forKey: Self.lastUserIdKey)
         pendingChallenge = nil
         pendingEmail = nil
         banner = nil
@@ -162,6 +179,7 @@ final class AuthStore {
 
     func signOut(reason: String? = nil) {
         forceSignOut(reason: reason)
+        clearAccountData(of: nil)
     }
 
     /// Invoked by `APIClient` on any 401. A 401 issued under an older generation belongs to a
@@ -182,21 +200,42 @@ final class AuthStore {
     /// Delete the signed-in account (brief 010). On success the local state goes exactly as it
     /// does for a server change (token, cached user, recipe cache, pending code) and the app is
     /// back on sign-in. On failure this throws and nothing local changes: still signed in.
+    ///
+    /// The session can change while the request is in flight (an expired token signs the person
+    /// out; someone signs in). The account that was deleted is always forgotten; a newer session
+    /// that belongs to someone else is never touched.
     func deleteAccount() async throws {
-        guard isSignedIn else { return }
+        guard let deleted = user?.id else { return }
         let issued = generation.current()
         try await api.deleteAccount()
-        // Signed out (or in again) while the request was in flight: that session is not ours to end.
-        guard generation.current() == issued else { return }
-        dropEverything(reason: nil)
-        notice = AccountDeletionModel.deletedNotice
+        if generation.current() == issued || user?.id == deleted {
+            // Still the deleted account's session (or the same account signed in again).
+            dropEverything(reason: nil)
+            notice = AccountDeletionModel.deletedNotice
+        } else if !isSignedIn {
+            // Signed out meanwhile: the credentials are gone already; forget the rest and say so.
+            clearAccountData(of: nil)
+            banner = nil
+            notice = AccountDeletionModel.deletedNotice
+        } else {
+            // Someone else is signed in now. Only the deleted account's leftovers go.
+            clearAccountData(of: deleted)
+        }
     }
 
     /// Everything that belongs to the session and its server: the pending sign-in code, the
-    /// token, the cached user and the cached recipes.
+    /// token, the cached user, the cached recipes, and what the account left on the phone.
     private func dropEverything(reason: String?) {
         cancelPendingChallenge()
         forceSignOut(reason: reason)
+        clearAccountData(of: nil)
+    }
+
+    private func clearAccountData(of userId: UUID?) {
+        if userId == nil || userId?.uuidString == defaults.string(forKey: Self.lastUserIdKey) {
+            defaults.removeObject(forKey: Self.lastUserIdKey)
+        }
+        onAccountDataCleared?(userId)
     }
 
     #if DEBUG

@@ -34,7 +34,7 @@ protocol AuthService: Sendable {
     func verifyDevCode(challengeId: String, code: String) async throws -> AuthResponse
     /// Sign in with Apple (brief 010): exchange Apple's identity token for our token. A token the
     /// server refuses → `APIError.unauthorized`.
-    func signInWithApple(identityToken: String, nonce: String, displayName: String?) async throws -> AuthResponse
+    func signInWithApple(identityToken: String, nonce: String, authorizationCode: String?, displayName: String?) async throws -> AuthResponse
     /// Sign in with Google (brief 010): exchange Google's ID token and the raw nonce for our token.
     func signInWithGoogle(idToken: String, nonce: String) async throws -> AuthResponse
     func me() async throws -> User
@@ -115,8 +115,9 @@ final class APIClient: Sendable, RecipeService, AuthService {
         return try await send(.post("/v1/auth/dev-login/verify", body: body), authenticated: false)
     }
 
-    func signInWithApple(identityToken: String, nonce: String, displayName: String?) async throws -> AuthResponse {
-        let body = try encoder.encode(AppleSignInRequest(identityToken: identityToken, nonce: nonce, displayName: displayName))
+    func signInWithApple(identityToken: String, nonce: String, authorizationCode: String?, displayName: String?) async throws -> AuthResponse {
+        let body = try encoder.encode(AppleSignInRequest(identityToken: identityToken, nonce: nonce,
+                                                         authorizationCode: authorizationCode, displayName: displayName))
         return try await send(.post("/v1/auth/apple", body: body), authenticated: false)
     }
 

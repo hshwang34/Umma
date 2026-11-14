@@ -105,6 +105,8 @@ struct CaptureFeatureFlags: Sendable, Equatable {
     /// Brief 016 live pantry scan (camera frame stream). Unlike the adapter flags above it defaults
     /// OFF until the scan screen ships, and `allOn` leaves it off.
     var liveScan: Bool = false
+    /// Brief 017 receipt photo → pantry. Off until the real-receipt test has been run.
+    var receipt: Bool = false
 
     /// Every capture adapter on; the default for a fresh install.
     static let allOn = CaptureFeatureFlags(phoneCamera: true, phoneSpeech: true, systemAudio: true, phoneVoice: true)
@@ -115,6 +117,7 @@ struct CaptureFeatureFlags: Sendable, Equatable {
         static let systemAudio = "feature.capture.systemAudio"
         static let phoneVoice = "feature.capture.phoneVoice"
         static let liveScan = "feature.capture.liveScan"
+        static let receipt = "feature.capture.receipt"
     }
 
     static func load(from defaults: UserDefaults = .standard) -> CaptureFeatureFlags {
@@ -126,7 +129,8 @@ struct CaptureFeatureFlags: Sendable, Equatable {
             phoneSpeech: flag(Key.phoneSpeech),
             systemAudio: flag(Key.systemAudio),
             phoneVoice: flag(Key.phoneVoice),
-            liveScan: defaults.bool(forKey: Key.liveScan)
+            liveScan: defaults.bool(forKey: Key.liveScan),
+            receipt: defaults.bool(forKey: Key.receipt)
         )
     }
 }

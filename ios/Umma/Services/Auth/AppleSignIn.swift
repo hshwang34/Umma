@@ -26,6 +26,9 @@ struct SignInNonce: Equatable, Sendable {
 enum AppleSignIn {
     struct Credential: Equatable, Sendable {
         let identityToken: String
+        /// Apple's one-time authorization code. The server exchanges it so it can revoke the
+        /// Apple grant when the account is deleted. Nil when Apple gives none.
+        var authorizationCode: String? = nil
         /// Only present on a person's first sign-in with this Apple ID.
         let displayName: String?
     }
@@ -34,11 +37,12 @@ enum AppleSignIn {
         case missingIdentityToken
     }
 
-    static func credential(identityToken: Data?, fullName: PersonNameComponents?) throws -> Credential {
+    static func credential(identityToken: Data?, authorizationCode: Data? = nil, fullName: PersonNameComponents?) throws -> Credential {
         guard let identityToken, let token = String(data: identityToken, encoding: .utf8), !token.isEmpty else {
             throw Failure.missingIdentityToken
         }
-        return Credential(identityToken: token, displayName: displayName(from: fullName))
+        let code = authorizationCode.flatMap { String(data: $0, encoding: .utf8) }.flatMap { $0.isEmpty ? nil : $0 }
+        return Credential(identityToken: token, authorizationCode: code, displayName: displayName(from: fullName))
     }
 
     /// "Mina Cho" from the name Apple shares, or nil when it shares none.

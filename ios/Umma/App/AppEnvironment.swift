@@ -35,6 +35,8 @@ final class AppEnvironment {
     /// Brief 010: nil until a Google client ID is configured; the sign-in screen then has no
     /// Google button.
     let googleSignIn: GoogleSignInFlow?
+    /// Brief 014: unfinished recordings (transcript text) kept on this phone.
+    let captureJournal: CaptureJournalStore
     /// Brief 005: open cooking session (resume banner, floating pill, full-screen cooking view).
     let cooking: CookingSessionStore
 
@@ -97,6 +99,7 @@ final class AppEnvironment {
          makeFreeVoiceTransport: @escaping @MainActor () -> any VoiceTransport = { FakeVoiceTransport(isAvailable: false) },
          makePaidVoiceTransport: @escaping @MainActor (any VoiceTransport) -> any VoiceTransport = { $0 },
          googleSignIn: GoogleSignInFlow? = nil,
+         captureJournal: CaptureJournalStore = .live,
          sessionCache: SessionCaching = InMemorySessionCache()) {
         self.serverSettings = serverSettings
         self.api = api
@@ -110,6 +113,7 @@ final class AppEnvironment {
         self.makeFreeVoiceTransport = makeFreeVoiceTransport
         self.makePaidVoiceTransport = makePaidVoiceTransport
         self.googleSignIn = googleSignIn
+        self.captureJournal = captureJournal
         cooking = CookingSessionStore(service: api, cache: sessionCache, owner: { [weak auth, weak serverSettings] in
             guard let user = auth?.user, let server = serverSettings?.effectiveBaseURLString, !server.isEmpty else { return nil }
             return SessionOwner(userId: user.id, server: server)
@@ -120,6 +124,19 @@ final class AppEnvironment {
         auth.onCredentialsCleared = { [weak cooking] in
             previousHook?()
             cooking?.reset()
+        }
+        // Brief 010: what an account left on the phone goes when it is signed out, deleted or the
+        // server changes: recorded-recipe transcripts (with their unsent writes) and onboarding
+        // leftovers. Everything else account-scoped is fetched from the server, not stored.
+        let previousWipe = auth.onAccountDataCleared
+        auth.onAccountDataCleared = { [weak self, captureJournal] userId in
+            previousWipe?(userId)
+            captureJournal.removeAll(userId: userId)
+            guard userId == nil, let self else { return }
+            self.requestNewRecipe = false
+            UserDefaults.standard.removeObject(forKey: AppEnvironment.onboardingFlagKey)
+            self.onboardingEnabled = UserDefaults.standard.object(forKey: AppEnvironment.onboardingFlagKey) == nil
+                || UserDefaults.standard.bool(forKey: AppEnvironment.onboardingFlagKey)
         }
         // Recipe ids belong to one server: a link (or an open stack) from the old server is stale.
         let previous = serverSettings.onEffectiveBaseURLChanged

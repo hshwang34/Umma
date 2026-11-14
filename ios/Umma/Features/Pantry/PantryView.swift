@@ -8,6 +8,8 @@ struct PantryView: View {
     @State private var editor: PantryItemEditorModel?
     @State private var capture: PantryCaptureKind?
     @State private var pendingDelete: PantryItem?
+    @State private var showsLiveScan = false
+    @State private var showsShopping = false
 
     var body: some View {
         NavigationStack {
@@ -21,6 +23,7 @@ struct PantryView: View {
             .background(SLColor.background)
             .navigationTitle("Pantry")
             .tabRootHeader()
+            .navigationDestination(isPresented: $showsShopping) { ShoppingListView() }
         }
         .task(id: environment.pantryRevision) {
             let model = self.model ?? makeModel()
@@ -34,7 +37,15 @@ struct PantryView: View {
             }
         }
         .sheet(item: $capture) { kind in
-            PantryCaptureSheet(kind: kind, existingItems: model?.items ?? []) { added in
+            PantryCaptureSheet(kind: kind, existingItems: model?.items ?? [], onAdded: { added in
+                model?.apply(added)
+                environment.notePantryChanged()
+            }, onReceipt: { result in
+                model?.noteReceipt(result)
+            })
+        }
+        .sheet(isPresented: $showsLiveScan) {
+            LiveScanSheet { added in
                 model?.apply(added)
                 environment.notePantryChanged()
             }
@@ -42,7 +53,7 @@ struct PantryView: View {
     }
 
     private func makeModel() -> PantryViewModel {
-        let model = PantryViewModel(service: environment.api)
+        let model = PantryViewModel(service: environment.api, receipts: environment.api)
         model.onChanged = { [environment] in environment.notePantryChanged() }
         return model
     }
@@ -50,20 +61,57 @@ struct PantryView: View {
     /// Brief 019: the tab's own header, with Speak / Scan / Add at its trailing edge.
     private var header: some View {
         TabHeader(title: "Pantry") {
+            Button { showsShopping = true } label: {
+                Label("Shopping list", systemImage: "cart")
+            }
+            .accessibilityIdentifier("pantry.shopping")
             Button { capture = .speak } label: {
                 Label("Speak", systemImage: "mic")
             }
             .accessibilityIdentifier("pantry.speak")
             .accessibilityHint("Say or type what you have; you review every item before it’s added")
-            Button { capture = .scan } label: {
-                Label("Scan", systemImage: "camera")
-            }
-            .accessibilityIdentifier("pantry.scan")
-            .accessibilityHint("Take or choose one photo; you review every item before it’s added")
+            scanControl
             Button { openAdd() } label: {
                 Label("Add", systemImage: "plus")
             }
             .accessibilityIdentifier("pantry.add")
+        }
+    }
+
+    /// One way to scan → a plain button. More than one (live scan on) → a menu to pick from.
+    @ViewBuilder
+    private var scanControl: some View {
+        let options = PantryScanOption.options(liveScan: environment.captureFlags.liveScan,
+                                               receipt: environment.captureFlags.receipt)
+        if options == [.photo] {
+            Button { open(.photo) } label: {
+                Label("Scan", systemImage: "camera")
+            }
+            .accessibilityIdentifier("pantry.scan")
+            .accessibilityHint(PantryScanOption.photo.hint)
+        } else {
+            Menu {
+                ForEach(options) { option in
+                    Button { open(option) } label: {
+                        Label(option.title, systemImage: option.systemImage)
+                    }
+                    .accessibilityIdentifier("pantry.scan.\(option.rawValue)")
+                }
+            } label: {
+                Label("Scan", systemImage: "camera")
+                    .frame(minWidth: Metrics.minTapTarget, minHeight: Metrics.minTapTarget)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("pantry.scan")
+            .accessibilityHint("Choose how to scan")
+        }
+    }
+
+    private func open(_ option: PantryScanOption) {
+        switch option {
+        case .liveScan: showsLiveScan = true
+        case .photo: capture = .scan
+        case .receipt: capture = .receipt
         }
     }
 
@@ -96,6 +144,12 @@ struct PantryView: View {
         case .loaded where model.items.isEmpty:
             ScrollView {
                 header.padding(.horizontal, Spacing.screen)
+                if model.receiptBanner != nil {
+                    receiptBanner(model)
+                        .padding(Spacing.lg)
+                        .background(SLColor.surface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                        .padding(.horizontal, Spacing.screen)
+                }
                 EmptyStateView(
                     systemImage: "basket",
                     title: "Your pantry is empty",
@@ -113,6 +167,15 @@ struct PantryView: View {
         }
     }
 
+    @ViewBuilder
+    private func receiptBanner(_ model: PantryViewModel) -> some View {
+        if let banner = model.receiptBanner {
+            ReceiptBannerView(banner: banner, isUndoing: model.isUndoingReceipt,
+                              onUndo: { Task { await model.undoReceipt() } },
+                              onDismiss: { model.dismissReceiptBanner() })
+        }
+    }
+
     private func list(_ model: PantryViewModel) -> some View {
         List {
             Section {
@@ -122,6 +185,9 @@ struct PantryView: View {
                     .listRowSeparator(.hidden)
             }
             .listSectionSpacing(.compact)
+            if model.receiptBanner != nil {
+                Section { receiptBanner(model) }
+            }
             if let error = model.actionError {
                 Section {
                     Text(error)
@@ -255,8 +321,56 @@ private struct PantryRowView: View {
     }
 }
 
+/// What the last receipt did (brief 017). Undo is the cook's tap; unread lines need no answer.
+private struct ReceiptBannerView: View {
+    let banner: ReceiptBannerPresentation
+    let isUndoing: Bool
+    let onUndo: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Label(banner.title, systemImage: banner.isDemo ? "theatermasks" : "scroll")
+                .font(SLFont.headline)
+                .foregroundStyle(banner.isDemo ? SLColor.warning : SLColor.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("pantry.receipt.title")
+            ForEach(banner.details, id: \.self) { detail in
+                Text(detail).font(SLFont.callout).foregroundStyle(SLColor.textSecondary)
+            }
+            if !banner.skippedLines.isEmpty {
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text("Not read, so not added:").font(SLFont.caption).foregroundStyle(SLColor.textSecondary)
+                    ForEach(Array(banner.skippedLines.enumerated()), id: \.offset) { _, line in
+                        Text(line).font(SLFont.footnote.monospaced()).foregroundStyle(SLColor.textSecondary).lineLimit(1)
+                    }
+                    if let more = banner.moreSkippedText {
+                        Text(more).font(SLFont.footnote).foregroundStyle(SLColor.textSecondary)
+                    }
+                }
+            }
+            HStack(spacing: Spacing.md) {
+                if banner.canUndo {
+                    Button(isUndoing ? "Undoing…" : "Undo receipt", action: onUndo)
+                        .disabled(isUndoing)
+                        .accessibilityHint("Takes back what this receipt added, except items you changed since")
+                        .accessibilityIdentifier("pantry.receipt.undo")
+                }
+                Button("OK", action: onDismiss)
+                    .disabled(isUndoing)
+                    .accessibilityIdentifier("pantry.receipt.dismiss")
+            }
+            .font(SLFont.callout.weight(.semibold))
+            .buttonStyle(.bordered)
+            .tint(SLColor.accent)
+            .frame(minHeight: Metrics.minTapTarget)
+        }
+        .padding(.vertical, Spacing.xs)
+    }
+}
+
 enum PantryCaptureKind: String, Identifiable {
-    case speak, scan
+    case speak, scan, receipt
     var id: String { rawValue }
 }
 
@@ -268,6 +382,9 @@ struct PantryCaptureSheet: View {
     let kind: PantryCaptureKind
     let existingItems: [PantryItem]
     let onAdded: ([PantryItem]) -> Void
+    /// Receipt mode: the server's answer. Delivered by the capture model itself, so it arrives
+    /// even if this sheet is no longer on screen.
+    var onReceipt: @MainActor (ReceiptResult) -> Void = { _ in }
 
     @State private var speak: SpeakCaptureViewModel?
     @State private var scan: ScanCaptureViewModel?
@@ -279,7 +396,7 @@ struct PantryCaptureSheet: View {
                 switch kind {
                 case .speak:
                     if let speak { SpeakCaptureView(model: speak, onObservation: showReview) }
-                case .scan:
+                case .scan, .receipt:
                     if let scan { ScanCaptureView(model: scan, onObservation: showReview) }
                 }
             }
@@ -287,6 +404,8 @@ struct PantryCaptureSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        // A photo in flight is saved by the server whatever happens here.
+                        .disabled(scan?.blocksDismissal == true)
                         .accessibilityIdentifier("capture.cancel")
                 }
             }
@@ -304,9 +423,18 @@ struct PantryCaptureSheet: View {
             case .scan where scan == nil:
                 scan = ScanCaptureViewModel(camera: environment.camera, service: environment.api,
                                             fixture: environment.pantryPhotoFixture)
+            case .receipt where scan == nil:
+                let model = ScanCaptureViewModel(camera: environment.camera, service: environment.api, receipts: environment.api)
+                model.onReceipt = onReceipt
+                scan = model
             default:
                 break
             }
+        }
+        .interactiveDismissDisabled(scan?.blocksDismissal == true)
+        .onChange(of: scan?.receipt) { _, result in
+            // The result itself went to the Pantry screen through `onReceipt`.
+            if result != nil { dismiss() }
         }
         .onDisappear {
             speak?.endListening()

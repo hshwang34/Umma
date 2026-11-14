@@ -1,9 +1,10 @@
 """``POST /sessions/{id}/ask`` (COOK-03/04, PRD §8.5, Appendix A, brief 005 contract).
 
-* The grounding packet holds only what §8.5 allows: the pinned version's title, servings and
-  original ingredient amounts, the current step ± 1, creator notes and warnings, approved
-  adaptations, the session's relevant pantry subset, the last 10 turns, running timers and the
-  caller's food preferences.
+* The grounding packet holds only what §8.5 allows: the pinned version's title, the session's
+  servings and the ingredient amounts for them (brief 020; the creator's own when the session
+  is not scaled), the current step ± 1, creator notes and warnings, approved adaptations, the
+  session's relevant pantry subset, the last 10 turns, running timers and the caller's food
+  preferences.
 * Recipe text, notes and the query are untrusted data. The coach never changes state; its
   ``proposed_action`` is kept only when the user's own query asked for it and it is legal right
   now, and it always ``requires_confirmation``.
@@ -14,6 +15,9 @@
   defence: when the query or answer touches doneness / safety / readiness, every sentence that
   could certify it is dropped, the thermometer notice is attached, and an emptied answer
   falls back to the template.
+* "I don't have that" (brief 017, ``missing.py``) is answered with a fixed offer built from the
+  vetted swap rules, after the safety templates and without calling the model. It writes
+  nothing: the swap, the shopping list and the pantry each keep their own confirmed path.
 * Rate limits: 120 asks per user per hour across all sessions (``usage_events``, survives
   session deletion) and 60 per session per hour; both reserved and committed before the
   provider call so no lock spans it.
@@ -65,7 +69,7 @@ from app.domains.safety.content import (
     strip_model_claims,
     temperature_table,
 )
-from app.domains.sessions import intent, service
+from app.domains.sessions import intent, missing, service
 from app.domains.sessions.schemas import (
     AskIn,
     AskOut,
@@ -178,7 +182,7 @@ async def ask(
     )
 
     version, recipe = await service._pinned(session, row)
-    ctx = context_from(version, recipe)
+    ctx = context_from(version, recipe, row.servings)
     overlay = (row.adaptation_json or {}).get("steps", {})
     steps = ctx.steps
     idx = min(row.step_index, max(len(steps) - 1, 0))
@@ -212,7 +216,7 @@ async def ask(
         recipe_version_id=str(ctx.version_id),
         version_number=version.version_number,
         title=ctx.title,
-        servings=version.servings,
+        servings=row.servings if row.servings is not None else version.servings,
         ingredients=[" ".join(filter(None, [_amount(i), i.name])) for i in ctx.ingredients],
         ingredient_items=[
             IngredientSummary(id=i.id, name=i.name, amount=_amount(i)) for i in ctx.ingredients
@@ -282,6 +286,12 @@ async def ask(
         out = _template(packet, f"{DONENESS_NOTICE} {table}", refusal=True)
     elif is_doneness_question(body.query, risk_context):
         out = _template(packet, doneness_notice_for(body.query, risk_context), refusal=False)
+    elif (
+        offer := await missing.propose(session, user, ctx, idx, adaptations, body.query)
+    ) is not None:
+        # "I don't have that" (brief 017): a fixed offer from the vetted rules. The model is not
+        # called and nothing is written; every part needs its own confirmed command.
+        out = _missing_offer(offer[0], offer[1], current.id)
     else:
         response = await _coach(provider, packet)
         out = _postprocess(response, body, packet, ctx.steps, names, idx, adaptations)
@@ -382,6 +392,23 @@ def _postprocess(
         "safety_notice": safety_notice,
         "proposed_action": proposed,
         "requires_confirmation": proposed is not None,
+    }
+
+
+def _missing_offer(answer: str, offer: missing.MissingIngredientOut, step_id: str) -> dict:
+    grounding = (
+        GroundingOut(type="ingredient", id=offer.ingredient_ref)
+        if offer.ingredient_ref
+        else GroundingOut(type="recipe_step", id=step_id)
+    )
+    return {
+        "answer_text": answer,
+        "grounding": [grounding],
+        "uncertainty": "low",
+        "safety_notice": offer.swap.allergy_warning if offer.swap else None,
+        "proposed_action": None,
+        "requires_confirmation": False,
+        "missing_ingredient": offer,
     }
 
 

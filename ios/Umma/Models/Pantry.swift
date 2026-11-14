@@ -10,6 +10,10 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
     case manual
     case voice
     case photo
+    /// Written only by the server when a live scan finishes (brief 016). Never sent.
+    case live
+    /// Written only by the server when a receipt is read (brief 017). Never sent.
+    case receipt
     /// Anything the server sends that this build doesn't know. Shown neutrally, never sent.
     case other
 
@@ -24,6 +28,8 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
         case .manual: return "Manual"
         case .voice: return "Voice"
         case .photo: return "Photo"
+        case .live: return "Auto-added"
+        case .receipt: return "From receipt"
         case .other: return "Other"
         }
     }
@@ -33,6 +39,8 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
         case .manual: return "hand.point.up.left"
         case .voice: return "mic"
         case .photo: return "camera"
+        case .live: return "sparkles"
+        case .receipt: return "scroll"
         case .other: return "questionmark.circle"
         }
     }
@@ -385,6 +393,10 @@ struct FitItem: Codable, Sendable, Hashable, Identifiable {
     let pantryItemId: UUID?
     let pantryQuantity: FitQuantity?
     let conversionNote: String?
+    /// Brief 017: the dish's main ingredient (at most one per fit). Absent from older servers.
+    var isKey: Bool? = nil
+    /// When the matched pantry item was last confirmed; nil when nothing matched.
+    var lastConfirmedAt: Date? = nil
 
     var id: String { ingredientRef }
 }
@@ -396,6 +408,8 @@ struct PantryFit: Codable, Sendable, Hashable {
     let counts: FitCounts
     let items: [FitItem]
     let computedAt: Date
+    /// Brief 020: the servings the required amounts are for. Absent from older payloads.
+    var servings: Int? = nil
 }
 
 // MARK: - 409 DUPLICATE_PANTRY_ITEM

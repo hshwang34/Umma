@@ -1,7 +1,8 @@
 name: site
 on:
-  push: { paths: ['site/**', '.github/workflows/site.yml'] }
-  pull_request: { paths: ['site/**', '.github/workflows/site.yml'] }
+  push: { paths: ['site/**', '.github/workflows/site.yml', '.vercelignore'] }
+  pull_request: { paths: ['site/**', '.github/workflows/site.yml', '.vercelignore'] }
+  workflow_dispatch:
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -33,3 +34,26 @@ jobs:
                       bad.append(f"{page.name}: missing anchor {frag}")
           print("\n".join(bad) or "all links resolve"); sys.exit(1 if bad else 0)
           PY
+
+  # Vercel's own Git auto-deploy is off (site/vercel.json): it created a deployment for every push
+  # to the repo, and even the skipped ones count toward the free plan's 100 a day. This job is the
+  # only thing that puts the site live: a push to main that changes site/, or a manual run.
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency: { group: site-deploy, cancel-in-progress: false }
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: team_Rnf6ha4S3iGq1YVKKD2n2dkz
+      VERCEL_PROJECT_ID: prj_zdg3Qua1b2IEnlOGBjqriPovftOp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy site/ to production
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN is not set, so the site was not deployed. Add it under Settings > Secrets and variables > Actions, then rerun this workflow."
+            exit 1
+          fi
+          npx --yes vercel@56.5.0 deploy --prod --yes --token "$VERCEL_TOKEN"
