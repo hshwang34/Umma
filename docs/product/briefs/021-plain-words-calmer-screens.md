@@ -116,12 +116,16 @@ PRs 2–5 are stacked; iOS CI runs once on the top branch (DECISIONS #32).
   for the bar button "Saved" and the title "Your recipe is published".
 - While Edit or Unpublish is running, the More menu is replaced by a spinner.
 - `SessionStarterTests` now also fails if "unfinished cooks" comes back to the sheet.
+- Review round 1 found four problems, all fixed: the unpublish text wrongly said a link still
+  opens the recipe (only the owner, savers and people already cooking can); the photo-scan
+  intro had lost "only when you tap it"; the offline detail line showed while online; the
+  smoke test expected the old publish title.
 - Verified locally with `xcodebuild build-for-testing` (no simulator booted). The unit suite
   runs on iOS CI.
 
 ## Risks / what could go wrong for users
 - **Save and Share move.** A tester used to the buttons under the recipe has to find them in
   the top bar. This is where iPhone apps put them, and VoiceOver labels are unchanged.
-- **Not seen on a phone yet.** The layout change compiles and follows standard toolbar
+- **Not seen on a phone yet** (the simulator pool was full on 2026-11-14). The layout change compiles and follows standard toolbar
   behaviour, but nobody has looked at it on a device or at the largest text sizes.
 - **The briefing screenshots are stale** for the recipe page, Profile and the cooking banner.
