@@ -60,8 +60,11 @@ step 4. If the bucket name is taken, pick another and set `STORAGE_BUCKET` to ma
 
 ## 4. Secrets and settings
 
-Set with `fly secrets set NAME=value … --app umma-api` (one command can take several; add
-`--stage` to avoid a restart per call before the first deploy). Never put them in `fly.toml`,
+Set secrets with `fly secrets import`, which reads `NAME=value` lines from standard input, so
+no value is ever typed on a command line (where it would land in shell history and the
+process list). Keep the values in a file **outside the repo** that only you can read, or pipe
+them straight from the tool that makes them. `--stage` avoids a restart per call before the
+first deploy. Never put them in `fly.toml`,
 the repo, a PR or a log.
 
 **Required secrets** (the app refuses to start in `ENVIRONMENT=prod` without valid values):
@@ -69,7 +72,7 @@ the repo, a PR or a log.
 | Name | What it is for |
 |---|---|
 | `DATABASE_URL` | The Neon URL from step 2. Used by web, worker and the release command. |
-| `JWT_SECRET` | Signs the app's own session tokens. Generate: `openssl rand -hex 32`. Changing it signs everyone out. |
+| `JWT_SECRET` | Signs the app's own session tokens (32 random bytes; the example below generates it). Changing it signs everyone out. |
 | `STORAGE_ACCESS_KEY_ID` | Tigris access key id from step 3 (creator video, clips, cover photos). |
 | `STORAGE_SECRET_ACCESS_KEY` | Tigris secret from step 3. |
 
@@ -79,7 +82,7 @@ the repo, a PR or a log.
 |---|---|---|
 | `GEMINI_API_KEY` | Coach, pantry photos, receipts, video extraction, live scan. Paid-tier key from the personal Cloud project (DECISIONS #19). Also needs `AI_PROVIDER=gemini`. | With `AI_PROVIDER=mock` every AI answer is the labelled demo path. |
 | `GOOGLE_IOS_CLIENT_ID` | iOS OAuth client id for Sign in with Google (DECISIONS #33). Not secret, but set here so it is in one place. | `POST /v1/auth/google` does not exist. |
-| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Sign in with Apple key, used to exchange the sign-in authorization code for a refresh token (stored encrypted) and to revoke it when the person deletes their account (App Review guideline 5.1.1(v)). Team ID `V56DG94ZL5`; the key ID and `.p8` come from the developer portal (Keys → Sign in with Apple). Set the key with `APPLE_PRIVATE_KEY="$(cat AuthKey_XXXXXXXXXX.p8)"` and keep the `.p8` out of the repo. | Sign-in and account deletion still work; the Apple revoke is skipped and logged. **Set these before the external beta.** |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Sign in with Apple key, used to exchange the sign-in authorization code for a refresh token (stored encrypted) and to revoke it when the person deletes their account (App Review guideline 5.1.1(v)). Team ID `V56DG94ZL5`; the key ID and `.p8` come from the developer portal (Keys → Sign in with Apple). Set the key from its file path as shown below and keep the `.p8` out of the repo (`*.p8`, `*.pem` and `*.key` are also excluded from the Docker image). | Sign-in and account deletion still work; the Apple revoke is skipped and logged. **Set these before the external beta.** |
 | `REVIEW_LOGIN_CODE` | The secret code for Apple's Beta App Review login (section 10). At least 20 characters. | `POST /v1/auth/review` does not exist. |
 | `PEXELS_API_KEY` | Stock cover photo after a first publish (brief 019). | Recipes without a cover stay without one. |
 | `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | Paid server voice (brief 012). Also needs `PAID_VOICE_ENABLED=true`, which needs the PM's go (DECISIONS #26). | Voice stays on the phone. |
@@ -116,15 +119,26 @@ shows in `fly logs` as a settings validation error naming the variable.
 | `SHARE_URL_BASE` | `https://umma.app/r` | Base of recipe share links. Set to the live site domain. |
 | `JWT_TTL_DAYS` | `30` | Session length. |
 
-First-deploy example (values are placeholders):
+First-deploy example. The file lives outside the repo and holds one `NAME=value` per line:
 
 ```bash
-fly secrets set --stage --app umma-api \
-  DATABASE_URL='postgresql+asyncpg://…?ssl=require' \
-  JWT_SECRET="$(openssl rand -hex 32)" \
-  STORAGE_ACCESS_KEY_ID='tid_…' STORAGE_SECRET_ACCESS_KEY='tsec_…' \
-  GOOGLE_IOS_CLIENT_ID='…apps.googleusercontent.com'
-fly secrets list --app umma-api      # names and digests only
+umask 077 && mkdir -p ~/.umma-secrets
+# Write DATABASE_URL, STORAGE_ACCESS_KEY_ID, STORAGE_SECRET_ACCESS_KEY and
+# GOOGLE_IOS_CLIENT_ID into this file with an editor (not with echo on the command line):
+"${EDITOR:-nano}" ~/.umma-secrets/prod.env
+fly secrets import --stage --app umma-api < ~/.umma-secrets/prod.env
+
+# Generated values go straight down a pipe and are never shown:
+printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)" | fly secrets import --stage --app umma-api
+
+# The Sign in with Apple key, read from its file path (a multi-line value, so it is wrapped
+# in triple quotes):
+P8=~/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8
+{ printf 'APPLE_PRIVATE_KEY="""'; cat "$P8"; printf '"""\n'; } \
+  | fly secrets import --stage --app umma-api
+printf 'APPLE_TEAM_ID=V56DG94ZL5\nAPPLE_KEY_ID=XXXXXXXXXX\n' | fly secrets import --stage --app umma-api
+
+fly secrets list --app umma-api      # names and digests only; check every name is there
 ```
 
 ## 5. First deploy (PM go required)
@@ -145,8 +159,11 @@ socket address is the proxy's, not the tester's. Fly's proxy sets `Fly-Client-IP
 per-IP limits. `X-Forwarded-For` is never read. Without the setting every tester would share
 one per-IP budget, so the app refuses to start in prod when it is missing. If the backend ever
 moves behind a different proxy, change this to the header *that* proxy overwrites. Over a
-limit, the app answers 429 `RATE_LIMITED` and the phone can retry after a minute. Counters
-reset on every deploy or restart.
+limit, the app answers 429 `RATE_LIMITED` and the phone can retry after a minute.
+
+**Accepted limit:** the counters live in the web process, so every deploy or restart
+(including a rolling deploy) resets them: a caller who was being throttled gets a fresh
+budget. That is accepted for the beta; a shared store fixes it.
 
 - IPv4 callers are counted per address; IPv6 callers per /64 (one home or phone line).
 - A header value that is not an IP address is ignored and the socket address is used.
@@ -230,6 +247,11 @@ sessions, drafts, recordings' transcripts, recipes, and every video, clip and co
   the app gets 409 `ACCOUNT_DELETION_BUSY` (retryable); trying again works.
 - AI spend rows stay, with the person removed, so deleting an account never refunds the
   monthly budget.
+- **Accepted limit:** the Apple revoke is attempted once, right after the data is deleted. If
+  Apple is down, or the web process dies in the moment between the delete and the revoke,
+  there is no retry (the token was deleted with the account). The account and data are gone
+  either way; only the "Sign in with Apple" entry on the person's Apple account remains,
+  which they can remove in iPhone Settings.
 - The Apple token is revoked after the data is gone. The log line `account deleted` carries
   `apple_revoke`: `revoked`, `failed` (Apple refused or was down; the account is still
   deleted), `skipped_no_token` (the app did not send an authorization code at sign-in, or the
@@ -250,15 +272,25 @@ one extra way in while a build is in review: `POST /v1/auth/review` with body
   sees only its own pantry, sessions and recipes, plus the public catalogue. It can delete
   itself (reviewers test account deletion); the next review login makes a fresh one.
 - The route exists **only while `REVIEW_LOGIN_CODE` is set**. Unset, it is a 404.
-- Wrong codes get one indistinguishable 401. Attempts are limited to 5 per minute per address
-  and 30 per minute in total (plus the general sign-in limit), then 429. The code is compared
-  in constant time and never logged.
+- Wrong codes get one indistinguishable 401. The code is compared in constant time and never
+  logged. Its length (24 random bytes) is what makes guessing hopeless; the limits below only
+  slow it down.
+- Limits: every attempt counts against 5 per minute per address (plus the general sign-in
+  limit of 10 per minute per address). **Wrong** codes also count against 30 per minute
+  across all callers; over that, wrong codes get 429. The right code never spends or is
+  blocked by that shared budget, so a flood of guesses cannot lock the reviewer out.
+- Residual limit: the per-address limits still apply to the reviewer. Someone on the
+  reviewer's own network (same IPv4 address or IPv6 /64), or a flood large enough to push
+  new callers into shared prefix buckets (section 5), could still make the reviewer see 429
+  for a minute. They retry; nothing is locked permanently.
 
 Turn it on before submitting a build for review:
 
 ```bash
-CODE="$(openssl rand -base64 24)"; echo "$CODE"      # copy it; it is not shown again
-fly secrets set REVIEW_LOGIN_CODE="$CODE" --app umma-api
+umask 077 && mkdir -p ~/.umma-secrets
+printf 'REVIEW_LOGIN_CODE=%s\n' "$(openssl rand -base64 24)" > ~/.umma-secrets/review.env
+fly secrets import --app umma-api < ~/.umma-secrets/review.env
+cat ~/.umma-secrets/review.env        # copy the code into App Store Connect, then delete the file
 ```
 
 Put the code in App Store Connect → the build's **Test Information → Beta App Review

@@ -8,6 +8,9 @@
 # Never in an image, even under an allowed directory.
 **/.env
 **/.env.*
+**/*.p8
+**/*.pem
+**/*.key
 **/__pycache__/
 **/*.pyc
 **/.DS_Store
