@@ -109,6 +109,10 @@ class AppleSignInRequest(BaseModel):
     identity_token: str = Field(min_length=20, max_length=8192)
     nonce: str = Field(min_length=16, max_length=128)
     display_name: str | None = Field(default=None, max_length=120)
+    # Optional. Apple's one-time authorization code from the same sign-in. When present (and
+    # the backend has its Apple key) it is exchanged for a refresh token, stored encrypted, so
+    # deleting the account can revoke the Apple token. Absent: sign-in works as before.
+    authorization_code: str | None = Field(default=None, min_length=1, max_length=2048)
 
 
 class GoogleSignInRequest(BaseModel):

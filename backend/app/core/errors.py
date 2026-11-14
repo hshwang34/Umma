@@ -245,6 +245,18 @@ class VoiceUnavailable(AppError):
         super().__init__(message or "Server voice is unavailable. Voice runs on this iPhone.")
 
 
+class AccountDeletionBusy(AppError):
+    """Deleting the account kept colliding with new activity on the person's recipes (brief
+    010). Nothing was deleted; trying again works."""
+
+    code = "ACCOUNT_DELETION_BUSY"
+    status_code = 409
+    retryable = True
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or "Your account could not be deleted just now. Try again.")
+
+
 class StorageUnavailable(AppError):
     code = "STORAGE_UNAVAILABLE"
     status_code = 503
