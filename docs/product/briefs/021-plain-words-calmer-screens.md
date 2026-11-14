@@ -1,6 +1,6 @@
 # 021 — Plain words, calmer screens
 
-**Status:** in review · **Owner:** PM · **PR:** see "PR sequence" · **Updated:** 2026-11-14
+**Status:** shipped; a look on a phone remains · **Owner:** PM · **PR:** #126, #127, #128, #129, #130 · **Updated:** 2026-11-14
 
 ## Problem
 The app was written feature by feature, and the words on screen show it. Three things got in a
@@ -120,6 +120,9 @@ PRs 2–5 are stacked; iOS CI runs once on the top branch (DECISIONS #32).
   opens the recipe (only the owner, savers and people already cooking can); the photo-scan
   intro had lost "only when you tap it"; the offline detail line showed while online; the
   smoke test expected the old publish title.
+- The first iOS CI run failed two tests (964 passed). "Everything up to your last save is
+  safe" tripped the guard that bans "is safe" anywhere in app source; it now says "is kept".
+  The second run passed, and the four PRs merged in order.
 - Verified locally with `xcodebuild build-for-testing` (no simulator booted). The unit suite
   runs on iOS CI.
 
