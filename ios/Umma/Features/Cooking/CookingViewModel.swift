@@ -25,6 +25,10 @@ final class CookingViewModel: CookingSessionClient {
     private(set) var phase: Phase = .loading
     /// The canonical Session (server's, or the cached copy while `isOffline`).
     private(set) var session: CookingSession?
+    /// Brief 017: what finishing this cook put on the shopping list. Only the answer to
+    /// `complete` carries it, so it is kept here when a later read comes back without it.
+    private(set) var shoppingAdded: [String] = []
+    var shoppingSummary: ShoppingAddedSummary? { isEnded ? ShoppingAddedSummary(names: shoppingAdded) : nil }
     /// Showing a cached copy, or the last command could not reach the server. Read-only.
     private(set) var isOffline = false
     private(set) var isSending = false
@@ -117,6 +121,11 @@ final class CookingViewModel: CookingSessionClient {
         guard let session, session.stepsCount > 0 else { return nil }
         return "Step \(min(session.stepIndex, session.stepsCount - 1) + 1) of \(session.stepsCount)"
     }
+
+    /// Brief 020: what this cook is for. Always the session's own servings, never the recipe's.
+    var servings: SessionServings? { session.map(SessionServings.init) }
+    /// The current step's ingredients with the session's amounts.
+    var stepIngredients: [StepIngredientRow] { session.map(StepIngredientRow.rows) ?? [] }
 
     var instructionText: String? {
         guard let step = currentStep else { return nil }
@@ -406,6 +415,15 @@ final class CookingViewModel: CookingSessionClient {
     }
 
     /// Undo a swap mid-cook (SUB-03): the server restores the original step text.
+    /// "Use this swap" on the coach's missing-ingredient offer (brief 017): one confirmed
+    /// `approve_adaptation` command, like every other change to the session.
+    func approveAdaptation(_ adaptation: AdaptationInput) async -> Bool {
+        guard canSendCommands else { return false }
+        var command = SessionCommand.confirmed(.approveAdaptation, revision: revisionOrZero, source: .iosAssistant)
+        command.adaptation = adaptation
+        return await run(command)
+    }
+
     func revertAdaptation(id: UUID) async {
         var command = SessionCommand.confirmed(.revertAdaptation, revision: revisionOrZero)
         command.adaptationId = id
@@ -563,6 +581,7 @@ final class CookingViewModel: CookingSessionClient {
         if let current = session, current.id == latest.id, latest.revision < current.revision { return }
         let stepChanged = session?.stepIndex != latest.stepIndex
         session = latest
+        if !latest.shoppingAdded.isEmpty { shoppingAdded = latest.shoppingAdded }
         if announcedDoneTimers == nil {
             // Baseline when the screen opens: timers already done then are never announced.
             announcedDoneTimers = Set(TimerRow.rows(for: latest.timers, now: now()).filter(\.isDone).map(\.id))

@@ -266,8 +266,12 @@ phone cannot see `localhost`:
 `Info.plist` sets `NSAllowsLocalNetworking` so plain `http://` to a LAN address is allowed; anything
 off-LAN must be `https://`.
 
-On a device, the app starts with **no** server configured and asks for one; the setting persists in
-`UserDefaults` (`serverBaseURL`).
+On a device, a **debug** build starts with **no** server configured and asks for one; the setting
+persists in `UserDefaults` (`serverBaseURL`).
+
+A **release** build (TestFlight) always talks to `BuildConfig.productionAPIBaseURL`
+(`Umma/App/BuildConfig.swift`). It ignores any stored override and shows no server settings.
+Releasing is `make release-ios`; see `docs/release/testflight.md`.
 
 ## Layout
 

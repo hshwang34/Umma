@@ -327,7 +327,7 @@ final class SlowCreateService: CookingService, @unchecked Sendable {
     func suggestSubstitutions(recipeVersionId: UUID, ingredientRef: String) async throws -> SubstitutionResult {
         try await inner.suggestSubstitutions(recipeVersionId: recipeVersionId, ingredientRef: ingredientRef)
     }
-    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput]) async throws -> CookingSession {
+    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int?) async throws -> CookingSession {
         counter.value += 1
         if firstFails, counter.value == 1 {
             throw try CookingFixtures.apiError(status: 409, code: "STATE_CONFLICT", details: #"{"open_session_ids":["\#(CookingFixtures.sessionId)"]}"#)

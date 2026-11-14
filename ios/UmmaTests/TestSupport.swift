@@ -229,7 +229,7 @@ enum AuthFixtures {
             switch request.url?.path {
             case "/v1/auth/dev-login": return (.stub(request, status: 202), Data(challengeJSON.utf8))
             case "/v1/auth/dev-login/verify": return (.stub(request, status: 200), Data(loginJSON.utf8))
-            case "/v1/auth/apple": return (.stub(request, status: 200), Data(loginJSON.utf8))
+            case "/v1/auth/apple", "/v1/auth/google": return (.stub(request, status: 200), Data(loginJSON.utf8))
             default: return try fallback(request)
             }
         }

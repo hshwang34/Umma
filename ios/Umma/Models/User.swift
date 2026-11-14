@@ -41,15 +41,20 @@ struct User: Codable, Sendable, Identifiable, Hashable {
     /// Brief 015: `nil` until first-run onboarding is finished (the app shows it until then).
     var onboardedAt: Date? = nil
     var role: Role? = nil
+    /// Brief 020: the servings every recipe opens scaled to. `nil` means "the recipe's own".
+    var defaultServings: Int? = nil
+
+    static let defaultServingsRange = 1...6
 
     var needsOnboarding: Bool { onboardedAt == nil }
 
     private enum CodingKeys: String, CodingKey {
-        case id, displayName, preferenceUnits, createdAt, entitlement, onboardedAt, role
+        case id, displayName, preferenceUnits, createdAt, entitlement, onboardedAt, role, defaultServings
     }
 
     init(id: UUID, displayName: String, preferenceUnits: Units, createdAt: Date,
-         entitlement: Entitlement? = nil, onboardedAt: Date? = nil, role: Role? = nil) {
+         entitlement: Entitlement? = nil, onboardedAt: Date? = nil, role: Role? = nil,
+         defaultServings: Int? = nil) {
         self.id = id
         self.displayName = displayName
         self.preferenceUnits = preferenceUnits
@@ -57,6 +62,7 @@ struct User: Codable, Sendable, Identifiable, Hashable {
         self.entitlement = entitlement
         self.onboardedAt = onboardedAt
         self.role = role
+        self.defaultServings = defaultServings
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +75,9 @@ struct User: Codable, Sendable, Identifiable, Hashable {
         onboardedAt = try c.decodeIfPresent(Date.self, forKey: .onboardedAt)
         // An unknown role from a newer server is treated as "not chosen", not a decode failure.
         role = try? c.decodeIfPresent(Role.self, forKey: .role)
+        // Anything but a whole number from 1 to 6 reads as "the recipe's own".
+        let servings = try? c.decodeIfPresent(Int.self, forKey: .defaultServings)
+        defaultServings = servings.flatMap { Self.defaultServingsRange.contains($0) ? $0 : nil }
     }
 }
 
@@ -102,6 +111,13 @@ struct AppleSignInRequest: Encodable, Sendable {
     let nonce: String
     /// Apple only gives the name on a person's first sign-in; omitted when nil.
     let displayName: String?
+}
+
+/// `POST /v1/auth/google` (brief 010). `nonce` is the raw value; Google's token carries its
+/// SHA-256. The server refuses any other field, and takes the name from the token itself.
+struct GoogleSignInRequest: Encodable, Sendable {
+    let idToken: String
+    let nonce: String
 }
 
 struct AuthResponse: Decodable, Sendable {

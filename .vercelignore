@@ -1,0 +1,3 @@
+# The site deploy (.github/workflows/site.yml) runs from the repo root. Upload only site/.
+/*
+!/site

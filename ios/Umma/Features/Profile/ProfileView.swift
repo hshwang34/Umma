@@ -16,6 +16,8 @@ struct ProfileView: View {
     @State private var typeInAfterCapture = false
     @State private var pendingCaptures: [CaptureJournalRecord] = []
     @State private var showServerSettings = false
+    // Brief 020: Default servings.
+    @State private var servings: DefaultServingsViewModel?
 
     var body: some View {
         NavigationStack {
@@ -75,6 +77,11 @@ struct ProfileView: View {
             }
         }
         .task {
+            if servings == nil {
+                servings = DefaultServingsViewModel(current: environment.auth.user?.defaultServings, service: environment.api) { [environment] user in
+                    environment.auth.updateUser(user)
+                }
+            }
             if model == nil {
                 let created = MyRecipesViewModel(service: environment.api)
                 model = created
@@ -95,6 +102,7 @@ struct ProfileView: View {
                 CaptureFlowView(flow: flow) { typeInAfterCapture = true }
             }
         }
+        .onChange(of: environment.auth.user?.defaultServings) { _, current in servings?.sync(current: current) }
         .onAppear { pendingCaptures = environment.pendingCaptures() }
         .task {
             // Brief 014: a discard that couldn't reach the server is retried here.
@@ -117,11 +125,14 @@ struct ProfileView: View {
     /// header row in the List doesn't turn into a navigation cell.
     private var header: some View {
         TabHeader(title: "Profile") {
-            Button { showServerSettings = true } label: {
-                Label("Server settings", systemImage: "gearshape")
+            // Debug builds only (brief 010): a release build always talks to production.
+            if BuildConfig.allowsServerOverride {
+                Button { showServerSettings = true } label: {
+                    Label("Server settings", systemImage: "gearshape")
+                }
+                .accessibilityLabel("Server settings")
+                .accessibilityIdentifier("profile.serverSettings")
             }
-            .accessibilityLabel("Server settings")
-            .accessibilityIdentifier("profile.serverSettings")
         }
     }
 
@@ -267,6 +278,9 @@ struct ProfileView: View {
                     .frame(minHeight: Metrics.minTapTarget)
             }
             .accessibilityIdentifier("profile.taste")
+            if let servings {
+                defaultServingsRow(servings)
+            }
             NavigationLink {
                 FollowingListView()
             } label: {
@@ -277,7 +291,31 @@ struct ProfileView: View {
         } header: {
             Text("Cooking")
         } footer: {
-            Text("Allergies block swaps; foods to avoid are skipped when possible.")
+            Text("Allergies block swaps; foods to avoid are skipped when possible. \(DefaultServingsViewModel.footer)")
+        }
+    }
+
+    /// Brief 020: "Recipe’s own" or 1 to 6. Saved on the tap; a failed save rolls back and says so.
+    @ViewBuilder
+    private func defaultServingsRow(_ model: DefaultServingsViewModel) -> some View {
+        Picker(selection: Binding(get: { model.selected }, set: { value in Task { await model.select(value) } })) {
+            ForEach(model.options) { option in
+                Text(option.title)
+                    .accessibilityLabel(option.accessibilityLabel)
+                    .tag(option.servings)
+            }
+        } label: {
+            Label(DefaultServingsViewModel.title, systemImage: "person.2")
+                .frame(minHeight: Metrics.minTapTarget)
+        }
+        .pickerStyle(.menu)
+        .disabled(model.isSaving)
+        .accessibilityIdentifier("profile.defaultServings")
+        if let error = model.errorMessage {
+            Text(error)
+                .font(SLFont.footnote)
+                .foregroundStyle(SLColor.danger)
+                .accessibilityIdentifier("profile.defaultServingsError")
         }
     }
 
@@ -312,10 +350,12 @@ struct ProfileView: View {
 
     private var deviceSection: some View {
         Section {
-            LabeledContent("Server") {
-                Text(environment.serverSettings.effectiveBaseURLString.isEmpty ? "Not set" : environment.serverSettings.effectiveBaseURLString)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if BuildConfig.allowsServerOverride {
+                LabeledContent("Server") {
+                    Text(environment.serverSettings.effectiveBaseURLString.isEmpty ? "Not set" : environment.serverSettings.effectiveBaseURLString)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             LabeledContent("Camera", value: environment.camera.isAvailable ? "Available (\(environment.camera.kind.displayName))" : "Unavailable")
             LabeledContent("Microphone", value: environment.speech.isAvailable ? "Available (\(environment.speech.kind.displayName))" : "Unavailable")
@@ -323,7 +363,9 @@ struct ProfileView: View {
         } header: {
             Text("Device")
         } footer: {
-            Text("Capture inputs are checked on launch; the simulator reports camera and microphone as unavailable.")
+            if BuildConfig.isDebug {
+                Text("Capture inputs are checked on launch; the simulator reports camera and microphone as unavailable.")
+            }
         }
     }
 

@@ -267,6 +267,18 @@ final class PantryAPIClientTests: XCTestCase {
         let fit = try await makeClient().fit(recipeVersionId: UUID(uuidString: PantryFixtures.versionId)!)
         XCTAssertEqual(fit.items.count, 5)
         XCTAssertEqual(try StubURLProtocol.requests.first?.jsonBody().count, 0)
+        XCTAssertNil(fit.servings, "older payloads have no servings")
+    }
+
+    /// Brief 020: the fit is asked for the servings on the dial, and says what it computed for.
+    func testFitSendsServingsAndDecodesThem() async throws {
+        let json = String(PantryFixtures.fitJSON.dropLast(1)) + #","servings":2}"#
+        route(["POST /v1/recipe-versions/\(PantryFixtures.versionId)/fit": (200, json)])
+        let fit = try await makeClient().fit(recipeVersionId: UUID(uuidString: PantryFixtures.versionId)!, servings: 2)
+        XCTAssertEqual(fit.servings, 2)
+        let body = try XCTUnwrap(try StubURLProtocol.requests.first?.jsonBody())
+        XCTAssertEqual(body.count, 1)
+        XCTAssertEqual(body["servings"] as? Int, 2)
     }
 }
 

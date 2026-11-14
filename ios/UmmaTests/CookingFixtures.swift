@@ -186,7 +186,12 @@ final class FakeCookingService: CookingService, PreferencesService, @unchecked S
     func suggestSubstitutions(recipeVersionId: UUID, ingredientRef: String) async throws -> SubstitutionResult {
         record(.suggest(recipeVersionId, ingredientRef)); return try suggestHandler(recipeVersionId, ingredientRef)
     }
-    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput]) async throws -> CookingSession {
+    /// The `servings` of each create call, in order (nil = the recipe's own).
+    var createServings: [Int?] { lock.withLock { _createServings } }
+    private var _createServings: [Int?] = []
+
+    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int?) async throws -> CookingSession {
+        lock.withLock { _createServings.append(servings) }
         record(.create(recipeVersionId, adaptations)); return try createHandler(recipeVersionId, adaptations)
     }
     func activeSessions() async throws -> [SessionSummary] { record(.active); return try activeHandler() }
