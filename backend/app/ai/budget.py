@@ -5,17 +5,17 @@
   the row is **settled** at the price of the reported ``usage_metadata``; a failed call is
   settled at what it is known to have cost (zero for a 4xx/5xx answer, the attempt's ceiling
   for a timeout or cancellation, because the provider may still bill those).
-* Caps, checked atomically under one global advisory lock: per user $0.25 per UTC day, and a
+* Caps, checked atomically under one global advisory lock: per user $0.50 per UTC day (#34), and a
   global UTC-month hard stop at $22. At $15 the month soft-degrades (``video_extraction_enabled``
   is false; Slice 5 reads it). A reservation that would cross a cap is refused and the caller
   falls back to the labelled mock path (``AINotice``). Nothing fails silently.
 * A row that is never settled (a crash mid-call) keeps counting at its ceiling: fail closed.
 * Video extraction (brief 008) has its own per-user cap (5 per UTC month, counted on jobs), so
-  it is left out of the $0.25 per-user *day* check and sum: one 15-minute video's ceiling is
-  above $0.25, and extracting a video must not use up the user's coach budget for the day. It
+  it is left out of the per-user *day* check and sum: one 15-minute video's ceiling is
+  large, and extracting a video must not use up the user's coach budget for the day. It
   still counts towards both monthly caps.
 * Live pantry scan (brief 016) has its own per-user day allowance (``AI_USER_DAILY_LIVE_CAP_USD``):
-  ``pantry_live`` counts only against it, never against the $0.25 day cap, and the $0.25 cap's
+  ``pantry_live`` counts only against it, never against the day cap, and the day cap's
   spend never uses it up. Both monthly caps still include it.
 """
 
@@ -49,12 +49,12 @@ Capability = Literal[
     "capture",
     "capture_draft",
     "pantry_live",
-    "pantry_receipt",  # brief 017: one receipt photo; counts against the $0.25 day cap
+    "pantry_receipt",  # brief 017: one receipt photo; counts against the day cap
     "voice_stt",
     "voice_tts",
 ]
 # Draft-making calls (one per video / capture session) are limited by the per-user monthly
-# extraction count instead of the $0.25 per-user day budget (brief 008, brief 014). They still
+# extraction count instead of the per-user day budget (brief 008, brief 014). They still
 # count towards both monthly caps. ``capture`` (the interviewer) is interactive: day budget.
 EXTRACTION_CAPABILITIES: frozenset[str] = frozenset({"video", "capture_draft"})
 # Brief 016: live scan sessions have their own per-user day allowance.
