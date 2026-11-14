@@ -12,6 +12,9 @@ struct ProfileView: View {
     // Brief 014: New recipe → chooser → record while cooking.
     @State private var showNewRecipeChooser = false
     @State private var chosenNewRecipe: NewRecipeOption.Kind?
+    @State private var captureFlow: CaptureFlow?
+    @State private var typeInAfterCapture = false
+    @State private var pendingCaptures: [CaptureJournalRecord] = []
     @State private var showServerSettings = false
 
     var body: some View {
@@ -86,6 +89,18 @@ struct ProfileView: View {
         .sheet(isPresented: $showNewRecipeChooser, onDismiss: openChosenNewRecipe) {
             NewRecipeChooser { chosenNewRecipe = $0 }
         }
+        .background {
+            // A second cover can't share a view with the editor's; this one hosts capture.
+            Color.clear.fullScreenCover(item: $captureFlow, onDismiss: captureDismissed) { flow in
+                CaptureFlowView(flow: flow) { typeInAfterCapture = true }
+            }
+        }
+        .onAppear { pendingCaptures = environment.pendingCaptures() }
+        .task {
+            // Brief 014: a discard that couldn't reach the server is retried here.
+            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+            pendingCaptures = environment.pendingCaptures()
+        }
         .task(id: environment.requestNewRecipe) {
             // Brief 015: onboarding's "Record your first recipe" lands here.
             guard environment.requestNewRecipe else { return }
@@ -131,6 +146,18 @@ struct ProfileView: View {
             }
             .disabled(isOpeningEditor)
             .accessibilityIdentifier("profile.createRecipe")
+            ForEach(pendingCaptures, id: \.sessionId) { record in
+                CaptureResumeRow(record: record) {
+                    if record.discardPending == true {
+                        Task {
+                            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+                            pendingCaptures = environment.pendingCaptures()
+                        }
+                    } else {
+                        captureFlow = environment.makeCaptureFlow(resuming: record)
+                    }
+                }
+            }
             if let openError {
                 Text(openError)
                     .font(SLFont.footnote)
@@ -322,9 +349,18 @@ struct ProfileView: View {
         let choice = chosenNewRecipe
         chosenNewRecipe = nil
         switch choice {
+        case .recordVoice: captureFlow = environment.makeCaptureFlow()
         case .typeIn: Task { await createRecipe() }
-        // The recording screen arrives in the next PR (the flag is off until then).
-        case .recordVoice, .recordCamera, nil: break
+        case .recordCamera, nil: break
+        }
+    }
+
+    private func captureDismissed() {
+        pendingCaptures = environment.pendingCaptures()
+        Task { await model?.refresh() }
+        if typeInAfterCapture {
+            typeInAfterCapture = false
+            Task { await createRecipe() }
         }
     }
 
