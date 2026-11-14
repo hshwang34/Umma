@@ -32,7 +32,8 @@ struct RecipeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             if model == nil {
-                let created = RecipeDetailViewModel(recipeId: recipeId, card: card, service: environment.api)
+                let created = RecipeDetailViewModel(recipeId: recipeId, card: card,
+                                                    defaultServings: environment.auth.user?.defaultServings, service: environment.api)
                 created.onSavedChanged = { [environment] _, _ in environment.noteSavedChanged() }
                 model = created
                 await created.load()
@@ -119,6 +120,9 @@ struct RecipeDetailView: View {
                     .bottomBarScrim()
             }
         }
+        // A default set in Profile while this recipe is open applies here too, unless the cook
+        // already touched the dial.
+        .onChange(of: environment.auth.user?.defaultServings) { _, current in model.defaultServings = current }
         .confirmationDialog("Unpublish this recipe?", isPresented: $showUnpublishConfirmation, titleVisibility: .visible) {
             Button("Unpublish", role: .destructive) {
                 Task { await model.unpublish() }
