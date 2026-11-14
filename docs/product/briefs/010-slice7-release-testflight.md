@@ -1,6 +1,6 @@
 # 010 — Slice 7: hardening + public TestFlight beta
 
-**Status:** approved · **Owner:** PM · **PR:** — · **Updated:** 2026-10-28
+**Status:** approved, building (PM go 2026-11-14) · **Owner:** PM · **PR:** — · **Updated:** 2026-11-14
 
 ## Problem
 The app runs only on a laptop with dev sign-in. Nobody outside can try it.
@@ -44,6 +44,35 @@ App Store submission, payments, Android, analytics SDKs.
 2. **Support / privacy contact email shown to testers and Apple?** **Recommendation:**
    jacogoby@gmail.com (personal), or a new alias you create.
    → *Answer:* **jacogoby@gmail.com** (DECISIONS #20).
+
+## PR sequence
+The PM's go (2026-11-14): host the backend, replace the dev sign-in code with Sign in with Apple
+for testers, and clear every blocker to an internal and then an external TestFlight build.
+
+0. Docs: this sequence.
+1. Backend: Apple identity-token verifier (JWKS, aud/iss/exp/nonce) and `POST /v1/auth/apple`,
+   mounted only when `AUTH_MODE=apple`.
+2. Backend: authorization-code exchange, stored Apple refresh token, and `DELETE /v1/me`
+   (data, queued media, Apple token revoke).
+3. Backend: review login (one account, secret code, rate limited, its own sandbox data).
+4. Backend: per-IP and per-user rate limits, and a production-config check for the cost guard.
+5. Backend: Dockerfile, `fly.toml` (web and worker, alembic release command, health checks)
+   and `docs/release/backend.md`. The first deploy needs the PM's go in the session.
+6. iOS: Sign in with Apple (entitlement, button, `AuthStore` flow). Dev sign-in stays in debug
+   builds only.
+7. iOS: delete account in Profile.
+8. iOS: release config (production API URL, server override hidden outside debug, build
+   number), `make release-ios` and `docs/release/testflight.md`.
+9. iOS: permission-denied and error-state pass, App Privacy answers and review notes.
+
+Internal TestFlight needs PRs 1, 5, 6 and 8. External adds 2, 3, 4, 7 and 9.
+
+**Human steps (PM):**
+- Developer portal: App ID `com.umma.ios` with Sign in with Apple and Associated Domains.
+- Developer portal: a Sign in with Apple key (`.p8`), needed for token revoke in PR 2.
+- App Store Connect: the app record (SKU `umma-ios-001`), then Test Information and the
+  external group.
+- A Neon project on a personal account, and the go for the first Fly deploy.
 
 ## Engineering decisions (filled in by the lead while building)
 - …
