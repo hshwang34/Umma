@@ -405,3 +405,11 @@ merging during active development.
   and the recipe opens at its original unless a default is set. The creator's amounts can
   always be shown.
 *Lives in:* `docs/product/briefs/020-adjustable-servings.md`.
+
+#36 · 2026-11-13 · **Product site domain: `ummacooks.app`, auto-deployed from `main`.** Supersedes
+the free-domain line of #20: `umma.vercel.app` and `umma-site.vercel.app` were already taken.
+- **Domain:** the PM bought `ummacooks.app` on Vercel `hshwang34` ($9.99 first year, then $15/yr).
+  `ummacooks.com` was not bought for now. `www` redirects to the bare domain.
+- **Deploys:** Vercel project `umma-site` deploys `site/` from `main` automatically. Merging a PR
+  that changes `site/` puts it live in production; other commits are skipped.
+*Lives in:* `docs/product/briefs/011-product-site.md`.
