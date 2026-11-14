@@ -6,15 +6,23 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import APIRouter, WebSocket
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, WebSocket
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 from app.core.config import Settings
-from app.core.errors import AppError
-from app.core.security import verify_access_token_claims
+from app.core.errors import (
+    AppError,
+    PayloadTooLarge,
+    RateLimited,
+    VoiceNotEntitled,
+    VoiceUnavailable,
+)
+from app.core.security import CurrentUser, SettingsDep, verify_access_token_claims
 from app.db.models import User
 from app.domains.users import service as users_service
 from app.domains.users.schemas import entitlement_for
+from app.voice.speak import SpeakLimiter, speak
 from app.voice.stream import (
     CLOSE_LIMIT,
     CLOSE_NOT_ENTITLED,
@@ -113,3 +121,31 @@ async def voice_stream(ws: WebSocket) -> None:
         await session.run()
     finally:
         limiter.release(user.id)
+
+
+class SpeakIn(BaseModel):
+    # Sent to the vendor verbatim, never trimmed or rewritten (safety wording, brief 012).
+    text: str = Field(min_length=1)
+
+
+@router.post(
+    "/voice/speak",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"audio/pcm": {}}, "description": "s16le mono PCM"}},
+)
+async def voice_speak(
+    body: SpeakIn, request: Request, user: CurrentUser, settings: SettingsDep
+) -> StreamingResponse:
+    """Umma's server voice: streamed PCM at ``X-Audio-Sample-Rate``. Paid only."""
+    if entitlement_for(user, settings) != "paid":
+        raise VoiceNotEntitled(NOT_ENTITLED_MESSAGE)
+    state = request.app.state
+    tts = state.voice_tts
+    if tts is None or not settings.paid_voice_enabled:  # dark until the PM's go (DECISIONS #26)
+        raise VoiceUnavailable(UNAVAILABLE_MESSAGE)
+    if len(body.text) > settings.voice_speak_max_chars:
+        raise PayloadTooLarge(f"Text is longer than {settings.voice_speak_max_chars} characters.")
+    limiter: SpeakLimiter = state.voice_speak_limiter
+    if not limiter.allow(user.id, settings.voice_speak_per_minute):
+        raise RateLimited("Too many voice lines this minute.")
+    return await speak(tts, state.cost_guard, user.id, body.text)
