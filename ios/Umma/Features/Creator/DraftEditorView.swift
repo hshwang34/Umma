@@ -111,7 +111,7 @@ struct DraftEditorView: View {
             Button("Discard unsaved changes", role: .destructive) { dismiss() }
             Button("Keep editing", role: .cancel) {}
         } message: {
-            Text("Everything up to your last save is safe.")
+            Text("Everything up to your last save is kept.")
         }
     }
 
