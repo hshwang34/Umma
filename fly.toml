@@ -1,0 +1,57 @@
+# Umma backend on Fly.io (brief 010, DECISIONS #18/#19). Lives at the repo root because the
+# image's build context is the repo root (the app needs ../fixtures); run `fly deploy` from here.
+# Runbook: docs/release/backend.md. Secrets are set with `fly secrets set`, never in this file.
+
+app = "umma-api"        # placeholder: Fly app names are global; change it here if it is taken
+primary_region = "iad"  # Ashburn, Virginia. Keep Neon and Tigris in the same US-East area.
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[deploy]
+  # Runs once per deploy in a temporary machine, before any new machine takes traffic.
+  # A failed migration aborts the deploy and the old version keeps serving.
+  release_command = "alembic upgrade head"
+
+# Not secret. Everything secret is listed in docs/release/backend.md.
+[env]
+  ENVIRONMENT = "prod"
+  AUTH_MODE = "apple"
+  LOG_LEVEL = "INFO"
+  STORAGE_ENDPOINT_URL = "https://t3.storage.dev"
+  STORAGE_REGION = "auto"
+  STORAGE_ADDRESSING_STYLE = "virtual"
+
+[processes]
+  web = "uvicorn app.main:app --host 0.0.0.0 --port 8080"
+  worker = "python -m app.workers.extraction"
+
+[http_service]
+  processes = ["web"]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/v1/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  processes = ["web"]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[[vm]]
+  processes = ["worker"]
+  size = "shared-cpu-1x"
+  memory = "1gb"   # ffmpeg on a 200 MB creator video

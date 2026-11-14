@@ -1,0 +1,13 @@
+# Build context for backend/Dockerfile is the repo root. Allow-list: only what the image needs.
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/alembic.ini
+!backend/app/
+!fixtures/
+# Never in an image, even under an allowed directory.
+**/.env
+**/.env.*
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
