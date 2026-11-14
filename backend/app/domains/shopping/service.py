@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import ShoppingCheckedBy, ShoppingItem, ShoppingReason, User
 from app.domains.matching.dictionary import IngredientDictionary, load_dictionary
 from app.domains.matching.fit import PantryEntry, RecipeIngredient, fit
-from app.domains.matching.normalize import alternatives, conjuncts, normalize
+from app.domains.matching.normalize import Normalized, alternatives, conjuncts, normalize
 from app.domains.ownership import get_owned_or_404
 from app.domains.recipes.schemas import IngredientOut
 from app.domains.shopping.schemas import NAME_MAX
@@ -57,6 +57,19 @@ async def _open_item(session: AsyncSession, user: User, key: str) -> ShoppingIte
     return (await session.scalars(stmt)).one_or_none()
 
 
+def _keyed(name: str, dictionary: IngredientDictionary) -> tuple[str, str, Normalized]:
+    label = " ".join(name.split())[:NAME_MAX]
+    norm = normalize(label, dictionary)
+    return label, (norm.key or label.casefold())[:NAME_MAX], norm
+
+
+async def is_listed(
+    session: AsyncSession, user: User, name: str, dictionary: IngredientDictionary
+) -> bool:
+    """Is ``name`` already an open item on the caller's list? Read only."""
+    return await _open_item(session, user, _keyed(name, dictionary)[1]) is not None
+
+
 async def add_item(
     session: AsyncSession,
     user: User,
@@ -68,9 +81,7 @@ async def add_item(
     recipe_version_id: uuid.UUID | None = None,
 ) -> tuple[ShoppingItem, bool]:
     """(the open item for ``name``, whether this call created it)."""
-    label = " ".join(name.split())[:NAME_MAX]
-    norm = normalize(label, dictionary)
-    key = (norm.key or label.casefold())[:NAME_MAX]
+    label, key, norm = _keyed(name, dictionary)
     insert = (
         pg_insert(ShoppingItem)
         .values(

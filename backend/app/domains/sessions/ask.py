@@ -15,6 +15,9 @@
   defence: when the query or answer touches doneness / safety / readiness, every sentence that
   could certify it is dropped, the thermometer notice is attached, and an emptied answer
   falls back to the template.
+* "I don't have that" (brief 017, ``missing.py``) is answered with a fixed offer built from the
+  vetted swap rules, after the safety templates and without calling the model. It writes
+  nothing: the swap, the shopping list and the pantry each keep their own confirmed path.
 * Rate limits: 120 asks per user per hour across all sessions (``usage_events``, survives
   session deletion) and 60 per session per hour; both reserved and committed before the
   provider call so no lock spans it.
@@ -66,7 +69,7 @@ from app.domains.safety.content import (
     strip_model_claims,
     temperature_table,
 )
-from app.domains.sessions import intent, service
+from app.domains.sessions import intent, missing, service
 from app.domains.sessions.schemas import (
     AskIn,
     AskOut,
@@ -283,6 +286,12 @@ async def ask(
         out = _template(packet, f"{DONENESS_NOTICE} {table}", refusal=True)
     elif is_doneness_question(body.query, risk_context):
         out = _template(packet, doneness_notice_for(body.query, risk_context), refusal=False)
+    elif (
+        offer := await missing.propose(session, user, ctx, idx, adaptations, body.query)
+    ) is not None:
+        # "I don't have that" (brief 017): a fixed offer from the vetted rules. The model is not
+        # called and nothing is written; every part needs its own confirmed command.
+        out = _missing_offer(offer[0], offer[1], current.id)
     else:
         response = await _coach(provider, packet)
         out = _postprocess(response, body, packet, ctx.steps, names, idx, adaptations)
@@ -383,6 +392,23 @@ def _postprocess(
         "safety_notice": safety_notice,
         "proposed_action": proposed,
         "requires_confirmation": proposed is not None,
+    }
+
+
+def _missing_offer(answer: str, offer: missing.MissingIngredientOut, step_id: str) -> dict:
+    grounding = (
+        GroundingOut(type="ingredient", id=offer.ingredient_ref)
+        if offer.ingredient_ref
+        else GroundingOut(type="recipe_step", id=step_id)
+    )
+    return {
+        "answer_text": answer,
+        "grounding": [grounding],
+        "uncertainty": "low",
+        "safety_notice": offer.swap.allergy_warning if offer.swap else None,
+        "proposed_action": None,
+        "requires_confirmation": False,
+        "missing_ingredient": offer,
     }
 
 
