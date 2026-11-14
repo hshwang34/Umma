@@ -110,6 +110,18 @@ final class AuthStore {
     /// leaves `pendingChallenge` in place so the user can retry; no session exists to tear down.
     func verify(challengeId: String, code: String) async throws {
         let response = try await api.verifyDevCode(challengeId: challengeId, code: code.trimmingCharacters(in: .whitespacesAndNewlines))
+        try startSession(response)
+    }
+
+    /// Sign in with Apple (brief 010). A token the server refuses throws `APIError.unauthorized`
+    /// and leaves the store signed out; no session exists to tear down.
+    func signInWithApple(_ credential: AppleSignIn.Credential, nonce: SignInNonce) async throws {
+        let response = try await api.signInWithApple(
+            identityToken: credential.identityToken, nonce: nonce.raw, displayName: credential.displayName)
+        try startSession(response)
+    }
+
+    private func startSession(_ response: AuthResponse) throws {
         if cachedUser()?.id != response.user.id {
             // A different account: nothing of the previous one's may survive.
             onCredentialsCleared?()
@@ -121,6 +133,14 @@ final class AuthStore {
         pendingEmail = nil
         banner = nil
         state = .signedIn(response.user)
+    }
+
+    /// A fresh copy of the signed-in user from the server (brief 015: role, onboarding done).
+    /// Ignored unless it is the same account that is signed in now.
+    func updateUser(_ user: User) {
+        guard self.user?.id == user.id else { return }
+        cache(user)
+        state = .signedIn(user)
     }
 
     /// "Use a different email": back to step 1.
@@ -152,7 +172,7 @@ final class AuthStore {
     #if DEBUG
     /// Tests only.
     func forceSignedInForTests() {
-        state = .signedIn(User(id: UUID(), displayName: "Tester", preferenceUnits: .us, createdAt: Date()))
+        state = .signedIn(User(id: UUID(), displayName: "Tester", preferenceUnits: .us, createdAt: Date(), onboardedAt: Date()))
     }
     #endif
 

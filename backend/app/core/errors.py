@@ -157,6 +157,25 @@ class UploadIncomplete(AppError):
     retryable = True
 
 
+class ImageTypeUnsupported(AppError):
+    """Brief 019: cover photos are JPEG only."""
+
+    code = "IMAGE_TYPE_UNSUPPORTED"
+    status_code = 415
+
+
+class ImageTooLarge(AppError):
+    code = "IMAGE_TOO_LARGE"
+    status_code = 413
+
+
+class UploadRejected(AppError):
+    """The uploaded object failed the server's checks (size, type); upload a new one."""
+
+    code = "UPLOAD_REJECTED"
+    status_code = 422
+
+
 class VideoExtractionLimit(AppError):
     """DECISIONS #19: at most N video extractions per user per UTC month."""
 
@@ -176,6 +195,54 @@ class VideoExtractionDisabled(AppError):
 
     code = "VIDEO_EXTRACTION_DISABLED"
     status_code = 503
+
+
+# --- Voice capture (brief 014) ---------------------------------------------------------------
+
+
+class CaptureModeUnavailable(AppError):
+    """Camera + voice capture is a visible "Coming soon" option (DECISIONS #25)."""
+
+    code = "CAPTURE_MODE_UNAVAILABLE"
+    status_code = 422
+
+
+class CaptureGenerationLimit(AppError):
+    """The per-user monthly extraction cap (shared with video) is used up. The recording is
+    kept; the draft can be made once the month rolls over, or typed in by hand."""
+
+    code = "CAPTURE_GENERATION_LIMIT"
+    status_code = 429
+    retryable = True
+
+
+class AIResting(AppError):
+    """The monthly AI budget is spent; nothing was lost and it can be retried later."""
+
+    code = "AI_RESTING"
+    status_code = 503
+    retryable = True
+
+
+# --- Paid server voice (brief 012 PR 2) -----------------------------------------------------
+
+
+class VoiceNotEntitled(AppError):
+    """Server voice is a Paid feature; Free keeps the on-device voice."""
+
+    code = "VOICE_NOT_ENTITLED"
+    status_code = 403
+
+
+class VoiceUnavailable(AppError):
+    """No vendor key configured, or the vendor refused or failed. The phone uses its own voice."""
+
+    code = "VOICE_UNAVAILABLE"
+    status_code = 503
+    retryable = True
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or "Server voice is unavailable. Voice runs on this iPhone.")
 
 
 class StorageUnavailable(AppError):

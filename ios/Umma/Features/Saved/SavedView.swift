@@ -12,16 +12,23 @@ struct SavedView: View {
                 if let model {
                     SavedContent(model: model)
                 } else {
-                    ProgressView()
+                    VStack(spacing: 0) {
+                        TabHeader(title: "Saved")
+                            .padding(.horizontal, Spacing.screen)
+                        ProgressView().frame(maxHeight: .infinity)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(SLColor.background)
             .navigationTitle("Saved")
+            .tabRootHeader()
             .navigationDestination(for: RecipeRoute.self) { route in
                 switch route {
+                case .creator(let id):
+                    CreatorProfileView(creatorId: id).pushedFromTabRoot()
                 case .recipe(let id, let card):
-                    RecipeDetailView(recipeId: id, card: card)
+                    RecipeDetailView(recipeId: id, card: card).pushedFromTabRoot()
                 }
             }
         }
@@ -48,6 +55,7 @@ private struct SavedContent: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.lg) {
+                TabHeader(title: "Saved")
                 switch model.phase {
                 case .idle, .loading:
                     VStack(spacing: Spacing.md) {
@@ -85,7 +93,7 @@ private struct SavedContent: View {
                 }
             }
             .padding(.horizontal, Spacing.screen)
-            .padding(.vertical, Spacing.lg)
+            .padding(.vertical, Spacing.sm)
         }
         .refreshable { await model.refresh() }
     }

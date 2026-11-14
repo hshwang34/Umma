@@ -6,6 +6,8 @@ is always parsed, never trusted raw. Providers may implement several Protocols o
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -71,6 +73,8 @@ class ExtractedRecipeDraft(StrictModel):
     )
     confidence: Confidence = Field(ge=0.0, le=1.0)
     requires_review: bool = True
+    # Brief 014: the creator's own phrases worth keeping verbatim (capture only).
+    creator_notes: list[str] = Field(default_factory=list)
 
 
 # --- 8.3 / 10.2 Pantry observation --------------------------------------------------------
@@ -107,6 +111,41 @@ class PantryObservation(StrictModel):
     unknowns: list[str] = Field(
         default_factory=list, description="What could not be identified (PRD §8.3)"
     )
+
+
+# --- Brief 017 receipt reading ------------------------------------------------------------
+
+MAX_RECEIPT_LINES = 80
+
+
+class ReceiptRequest(StrictModel):
+    """One receipt photo, in memory only (never stored or logged); like the pantry photo it is
+    excluded from dumps and reprs."""
+
+    image_bytes: bytes = Field(min_length=1, exclude=True, repr=False)
+    image_mime_type: str = "image/jpeg"
+
+
+class ReceiptLine(StrictModel):
+    """One printed line. ``name`` is null when the line could not be read with confidence: such a
+    line is reported, never guessed. ``count`` is packs bought; ``quantity``/``unit`` are set only
+    when the receipt prints a weight or volume."""
+
+    raw_text: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=80)
+    is_food: bool
+    count: int | None = Field(default=None, ge=1)
+    quantity: Decimal | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, max_length=16)
+    confidence: Confidence = Field(ge=0.0, le=1.0)
+
+
+class ReceiptDraft(StrictModel):
+    purchased_on: date | None = None
+    store: str | None = Field(default=None, max_length=120)
+    total: Decimal | None = None
+    lines: list[ReceiptLine] = Field(default_factory=list, max_length=MAX_RECEIPT_LINES)
+    demo: bool = Field(default=False, description="True when a fixture answered, not a real read")
 
 
 # --- 8.4 Substitution ---------------------------------------------------------------------
@@ -283,6 +322,103 @@ class InspectResponse(StrictModel):
     recommended_step_change: int | None = None
 
 
+# --- Brief 014 voice capture: interviewer + transcript extraction ----------------------------
+
+CaptureTopic = Literal[
+    "temperature", "time", "quantity", "doneness", "servings", "prep", "equipment"
+]
+
+
+class GapProposal(StrictModel):
+    """One thing a cook would need that the creator hasn't said yet."""
+
+    topic_key: str = Field(
+        min_length=1,
+        max_length=64,
+        description='Stable snake_case key naming the thing and attribute, e.g. "simmer_time"',
+    )
+    topic: CaptureTopic
+    question: str = Field(min_length=1, max_length=200, description="One short spoken question")
+
+
+class GapDecision(StrictModel):
+    """The interviewer's proposal for one pause. ``app.domains.capture.policy`` decides."""
+
+    open_gaps: list[GapProposal] = Field(default_factory=list, max_length=10)
+    filled_gaps: list[str] = Field(
+        default_factory=list, max_length=20, description="topic_keys the creator just answered"
+    )
+    proposed_question: str | None = Field(default=None, max_length=200)
+    topic_key: str | None = Field(default=None, max_length=64)
+    confidence: Confidence = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class CaptureUtterance(StrictModel):
+    t_ms: int = Field(ge=0)
+    text: str = Field(max_length=2000)
+
+
+class CaptureGapState(StrictModel):
+    topic_key: str
+    topic: CaptureTopic
+    question: str
+    status: str
+
+
+class CaptureInterviewRequest(StrictModel):
+    """``window`` is what the creator said since the interviewer last looked; ``recent`` is a
+    little context before it. ``final`` is the sweep after Done over the whole transcript."""
+
+    window: list[CaptureUtterance] = Field(default_factory=list)
+    recent: list[CaptureUtterance] = Field(default_factory=list, max_length=20)
+    known_gaps: list[CaptureGapState] = Field(default_factory=list)
+    said_keys: list[str] = Field(
+        default_factory=list, description="topic_keys the creator already covered"
+    )
+    title_hint: str | None = None
+    final: bool = False
+
+
+class CaptureFact(StrictModel):
+    """A question the interviewer asked and the creator's answer, in her exact words."""
+
+    topic_key: str
+    topic: CaptureTopic
+    question: str
+    answer: str
+    t_ms: int | None = Field(default=None, ge=0)
+    phase: Literal["live", "wrapup"] = "live"
+
+
+class TranscriptExtractionRequest(StrictModel):
+    title_hint: str | None = None
+    utterances: list[CaptureUtterance] = Field(default_factory=list)
+    facts: list[CaptureFact] = Field(default_factory=list)
+    unanswered: list[str] = Field(
+        default_factory=list, description="Questions still open at the end (for unknowns)"
+    )
+    language: str = "en"
+
+
+# --- Brief 016 live pantry scan: ephemeral token for a phone-side Live session ------------
+
+
+class LiveTokenSpec(StrictModel):
+    """What a minted token is locked to. The minter builds the provider's session config from
+    it (tool, modality, resolution are fixed server-side), so the phone can change none of it."""
+
+    model: str
+    system_instruction: str
+    expire_time: datetime
+    new_session_expire_time: datetime
+
+
+class MintedLiveToken(StrictModel):
+    token: str = Field(repr=False)  # a credential: never logged, never in a repr
+    expire_time: datetime
+    new_session_expire_time: datetime
+
+
 # --- Protocols ----------------------------------------------------------------------------
 
 
@@ -294,6 +430,8 @@ class RecipeExtractor(Protocol):
 @runtime_checkable
 class PantryExtractor(Protocol):
     async def observe(self, request: PantryObservationRequest) -> PantryObservation: ...
+
+    async def read_receipt(self, request: ReceiptRequest) -> ReceiptDraft: ...
 
 
 @runtime_checkable
@@ -312,8 +450,32 @@ class VisualObserver(Protocol):
 
 
 @runtime_checkable
+class CaptureInterviewer(Protocol):
+    async def decide(self, request: CaptureInterviewRequest) -> GapDecision: ...
+
+
+@runtime_checkable
+class TranscriptRecipeExtractor(Protocol):
+    async def extract_transcript(
+        self, request: TranscriptExtractionRequest
+    ) -> ExtractedRecipeDraft: ...
+
+
+@runtime_checkable
+class LiveTokenMinter(Protocol):
+    async def mint(self, spec: LiveTokenSpec) -> MintedLiveToken: ...
+
+
+@runtime_checkable
 class AIProvider(
-    RecipeExtractor, PantryExtractor, SubstitutionAdvisor, CookingCoach, VisualObserver, Protocol
+    RecipeExtractor,
+    PantryExtractor,
+    SubstitutionAdvisor,
+    CookingCoach,
+    VisualObserver,
+    CaptureInterviewer,
+    TranscriptRecipeExtractor,
+    Protocol,
 ):
     name: str
 

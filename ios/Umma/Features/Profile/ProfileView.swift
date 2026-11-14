@@ -9,10 +9,24 @@ struct ProfileView: View {
     @State private var openError: String?
     @State private var recipeToUnpublish: MyRecipe?
     @State private var draftToDelete: DraftSummary?
+    // Brief 014: New recipe → chooser → record while cooking.
+    @State private var showNewRecipeChooser = false
+    @State private var chosenNewRecipe: NewRecipeOption.Kind?
+    @State private var captureFlow: CaptureFlow?
+    @State private var typeInAfterCapture = false
+    @State private var pendingCaptures: [CaptureJournalRecord] = []
+    @State private var showServerSettings = false
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    header
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+                .listSectionSpacing(.compact)
                 myRecipesSection
                 draftsSection
                 foodSection
@@ -30,22 +44,17 @@ struct ProfileView: View {
             .scrollContentBackground(.hidden)
             .background(SLColor.background)
             .navigationTitle("Profile")
+            .tabRootHeader()
             .navigationDestination(for: RecipeRoute.self) { route in
                 switch route {
+                case .creator(let id):
+                    CreatorProfileView(creatorId: id).pushedFromTabRoot()
                 case .recipe(let id, let card):
-                    RecipeDetailView(recipeId: id, card: card)
+                    RecipeDetailView(recipeId: id, card: card).pushedFromTabRoot()
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        ServerSettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .frame(width: Metrics.minTapTarget, height: Metrics.minTapTarget)
-                    }
-                    .accessibilityLabel("Server settings")
-                }
+            .navigationDestination(isPresented: $showServerSettings) {
+                ServerSettingsView().pushedFromTabRoot()
             }
             .refreshable { await model?.refresh() }
             .confirmationDialog("Unpublish “\(recipeToUnpublish?.card.title ?? "")”?", isPresented: Binding(get: { recipeToUnpublish != nil }, set: { if !$0 { recipeToUnpublish = nil } }), titleVisibility: .visible) {
@@ -77,6 +86,43 @@ struct ProfileView: View {
         .fullScreenCover(item: $editor, onDismiss: { Task { await model?.refresh() } }) { editor in
             DraftEditorView(model: editor)
         }
+        .sheet(isPresented: $showNewRecipeChooser, onDismiss: openChosenNewRecipe) {
+            NewRecipeChooser { chosenNewRecipe = $0 }
+        }
+        .background {
+            // A second cover can't share a view with the editor's; this one hosts capture.
+            Color.clear.fullScreenCover(item: $captureFlow, onDismiss: captureDismissed) { flow in
+                CaptureFlowView(flow: flow) { typeInAfterCapture = true }
+            }
+        }
+        .onAppear { pendingCaptures = environment.pendingCaptures() }
+        .task {
+            // Brief 014: a discard that couldn't reach the server is retried here.
+            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+            pendingCaptures = environment.pendingCaptures()
+        }
+        .task(id: environment.requestNewRecipe) {
+            // Brief 015: onboarding's "Record your first recipe" lands here.
+            guard environment.requestNewRecipe else { return }
+            environment.requestNewRecipe = false
+            if CaptureFeature.isEnabled() {
+                showNewRecipeChooser = true
+            } else {
+                await createRecipe()
+            }
+        }
+    }
+
+    /// Brief 019: the tab's own header. Settings is a button, not a NavigationLink, so the
+    /// header row in the List doesn't turn into a navigation cell.
+    private var header: some View {
+        TabHeader(title: "Profile") {
+            Button { showServerSettings = true } label: {
+                Label("Server settings", systemImage: "gearshape")
+            }
+            .accessibilityLabel("Server settings")
+            .accessibilityIdentifier("profile.serverSettings")
+        }
     }
 
     // MARK: - My recipes
@@ -85,10 +131,14 @@ struct ProfileView: View {
     private var myRecipesSection: some View {
         Section {
             Button {
-                Task { await createRecipe() }
+                if CaptureFeature.isEnabled() {
+                    showNewRecipeChooser = true
+                } else {
+                    Task { await createRecipe() }
+                }
             } label: {
                 HStack {
-                    Label("Create recipe", systemImage: "plus.circle.fill")
+                    Label("New recipe", systemImage: "plus.circle.fill")
                     Spacer()
                     if isOpeningEditor { ProgressView() }
                 }
@@ -96,6 +146,18 @@ struct ProfileView: View {
             }
             .disabled(isOpeningEditor)
             .accessibilityIdentifier("profile.createRecipe")
+            ForEach(pendingCaptures, id: \.sessionId) { record in
+                CaptureResumeRow(record: record) {
+                    if record.discardPending == true {
+                        Task {
+                            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+                            pendingCaptures = environment.pendingCaptures()
+                        }
+                    } else {
+                        captureFlow = environment.makeCaptureFlow(resuming: record)
+                    }
+                }
+            }
             if let openError {
                 Text(openError)
                     .font(SLFont.footnote)
@@ -198,6 +260,20 @@ struct ProfileView: View {
                     .frame(minHeight: Metrics.minTapTarget)
             }
             .accessibilityIdentifier("profile.preferences")
+            NavigationLink {
+                TastePreferencesView()
+            } label: {
+                Label("Diets, cuisines & skill", systemImage: "fork.knife")
+                    .frame(minHeight: Metrics.minTapTarget)
+            }
+            .accessibilityIdentifier("profile.taste")
+            NavigationLink {
+                FollowingListView()
+            } label: {
+                Label("Following", systemImage: "person.2")
+                    .frame(minHeight: Metrics.minTapTarget)
+            }
+            .accessibilityIdentifier("profile.following")
         } header: {
             Text("Cooking")
         } footer: {
@@ -266,6 +342,25 @@ struct ProfileView: View {
             editor = try await DraftEditorViewModel.createNew(service: environment.api, creator: creator)
         } catch {
             openError = (error as? APIError)?.userMessage ?? error.localizedDescription
+        }
+    }
+
+    private func openChosenNewRecipe() {
+        let choice = chosenNewRecipe
+        chosenNewRecipe = nil
+        switch choice {
+        case .recordVoice: captureFlow = environment.makeCaptureFlow()
+        case .typeIn: Task { await createRecipe() }
+        case .recordCamera, nil: break
+        }
+    }
+
+    private func captureDismissed() {
+        pendingCaptures = environment.pendingCaptures()
+        Task { await model?.refresh() }
+        if typeInAfterCapture {
+            typeInAfterCapture = false
+            Task { await createRecipe() }
         }
     }
 

@@ -217,6 +217,7 @@ enum AuthFixtures {
     static let userJSON = #"{"id":"c1a2b3c4-d5e6-4f70-8a9b-0c1d2e3f4a5b","display_name":"Tester","preference_units":"us","created_at":"2026-10-20T00:00:00Z"}"#
     static let loginJSON = #"{"access_token":"jwt-1","token_type":"bearer","user":"# + userJSON + "}"
     static let challengeJSON = #"{"challenge_id":"chal-1","expires_in_seconds":600,"hint":"Check the server log for your sign-in code."}"#
+    static let badAppleJSON = #"{"error":{"code":"UNAUTHORIZED","message":"Invalid Apple sign-in","retryable":false,"correlation_id":"c-apple"}}"#
     static let badCodeJSON = #"{"error":{"code":"UNAUTHORIZED","message":"Invalid or expired sign-in code","retryable":false,"correlation_id":"c-bad"}}"#
     static let expiredTokenJSON = #"{"error":{"code":"UNAUTHORIZED","message":"Token expired.","retryable":false,"correlation_id":"c401"}}"#
 
@@ -228,6 +229,7 @@ enum AuthFixtures {
             switch request.url?.path {
             case "/v1/auth/dev-login": return (.stub(request, status: 202), Data(challengeJSON.utf8))
             case "/v1/auth/dev-login/verify": return (.stub(request, status: 200), Data(loginJSON.utf8))
+            case "/v1/auth/apple": return (.stub(request, status: 200), Data(loginJSON.utf8))
             default: return try fallback(request)
             }
         }

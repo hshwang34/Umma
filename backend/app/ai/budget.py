@@ -14,12 +14,16 @@
   it is left out of the $0.25 per-user *day* check and sum: one 15-minute video's ceiling is
   above $0.25, and extracting a video must not use up the user's coach budget for the day. It
   still counts towards both monthly caps.
+* Live pantry scan (brief 016) has its own per-user day allowance (``AI_USER_DAILY_LIVE_CAP_USD``):
+  ``pantry_live`` counts only against it, never against the $0.25 day cap, and the $0.25 cap's
+  spend never uses it up. Both monthly caps still include it.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -29,15 +33,33 @@ from sqlalchemy import case, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.notice import DenialReason
-from app.ai.pricing import cost_usd
+from app.ai.pricing import cost_usd, stt_cost_usd, tts_cost_usd
 from app.core.config import Settings
 from app.db.models import AIUsage
 
 log = logging.getLogger("umma.ai.budget")
 
 Capability = Literal[
-    "coach", "inspect", "pantry_photo", "pantry_transcript", "substitution", "video"
+    "coach",
+    "inspect",
+    "pantry_photo",
+    "pantry_transcript",
+    "substitution",
+    "video",
+    "capture",
+    "capture_draft",
+    "pantry_live",
+    "pantry_receipt",  # brief 017: one receipt photo; counts against the $0.25 day cap
+    "voice_stt",
+    "voice_tts",
 ]
+# Draft-making calls (one per video / capture session) are limited by the per-user monthly
+# extraction count instead of the $0.25 per-user day budget (brief 008, brief 014). They still
+# count towards both monthly caps. ``capture`` (the interviewer) is interactive: day budget.
+EXTRACTION_CAPABILITIES: frozenset[str] = frozenset({"video", "capture_draft"})
+# Brief 016: live scan sessions have their own per-user day allowance.
+LIVE_CAPABILITIES: frozenset[str] = frozenset({"pantry_live"})
+OWN_DAY_BUDGET: frozenset[str] = EXTRACTION_CAPABILITIES | LIVE_CAPABILITIES
 
 _GLOBAL_LOCK_KEY = "umma:ai_budget"
 # ``status`` reports "resting" once less than about one interactive call's reservation is left.
@@ -80,6 +102,41 @@ class UsageMeter:
         return billed + self.unknown_usd
 
 
+@dataclass
+class VoiceMeter:
+    """Usage of one paid-voice reservation (brief 012 PR 2), priced per unit, not per token.
+
+    ``speech`` meters milliseconds of audio sent to speech-to-text; ``voice`` meters characters
+    sent to text-to-speech. In the ledger row the unit count goes in ``input_tokens`` (audio ms)
+    or ``output_tokens`` (characters), so no schema change is needed.
+    """
+
+    model: str
+    at: datetime
+    kind: Literal["speech", "voice"]
+    units: int = 0
+    attempts: int = 1
+    unknown_usd: Decimal = field(default_factory=lambda: Decimal(0))
+
+    @property
+    def input_tokens(self) -> int:
+        return self.units if self.kind == "speech" else 0
+
+    @property
+    def output_tokens(self) -> int:
+        return self.units if self.kind == "voice" else 0
+
+    thinking_tokens = 0
+
+    @property
+    def cost(self) -> Decimal:
+        if self.kind == "speech":
+            billed = stt_cost_usd(self.model, self.at, audio_ms=self.units)
+        else:
+            billed = tts_cost_usd(self.model, self.at, characters=self.units)
+        return billed + self.unknown_usd
+
+
 @dataclass(frozen=True)
 class Reservation:
     id: uuid.UUID
@@ -119,12 +176,22 @@ def _spent_expr() -> Any:
 
 
 async def _spent(
-    session: AsyncSession, since: datetime, user_id: uuid.UUID | None = None
+    session: AsyncSession,
+    since: datetime,
+    user_id: uuid.UUID | None = None,
+    *,
+    live: bool = False,
 ) -> Decimal:
     stmt = select(_spent_expr()).where(AIUsage.created_at >= since)
     if user_id is not None:
-        # The per-user day budget is for interactive features; video has its own count cap.
-        stmt = stmt.where(AIUsage.user_id == user_id, AIUsage.capability != "video")
+        # Per-user day budgets: the interactive one excludes video/capture drafts (their own
+        # count cap) and live scan (its own allowance); ``live`` sums only live scan.
+        stmt = stmt.where(AIUsage.user_id == user_id)
+        stmt = stmt.where(
+            AIUsage.capability.in_(LIVE_CAPABILITIES)
+            if live
+            else AIUsage.capability.not_in(OWN_DAY_BUDGET)
+        )
     return Decimal(await session.scalar(stmt) or 0)
 
 
@@ -132,6 +199,7 @@ class CostGuard:
     def __init__(self, sessionmaker: async_sessionmaker[AsyncSession], settings: Settings) -> None:
         self._sessionmaker = sessionmaker
         self.user_daily_cap = Decimal(str(settings.ai_user_daily_cap_usd))
+        self.user_daily_live_cap = Decimal(str(settings.ai_user_daily_live_cap_usd))
         self.month_soft_cap = Decimal(str(settings.ai_month_soft_cap_usd))
         self.month_hard_cap = Decimal(str(settings.ai_month_hard_cap_usd))
 
@@ -142,7 +210,10 @@ class CostGuard:
         model: str,
         ceiling: Decimal,
         now: datetime | None = None,
+        precheck: Callable[[AsyncSession], Awaitable[None]] | None = None,
     ) -> Reservation | Denial:
+        """``precheck`` runs under the global lock in the same transaction, before the caps (e.g.
+        a per-user rate limit); an exception it raises rolls back and propagates."""
         now = now or datetime.now(UTC)
         async with self._sessionmaker() as session, session.begin():
             # One global lock: the month check and the insert are atomic across every worker.
@@ -150,6 +221,8 @@ class CostGuard:
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
                 {"k": _GLOBAL_LOCK_KEY},
             )
+            if precheck is not None:
+                await precheck(session)
             month = await _spent(session, month_start(now))
             if month + ceiling > self.month_hard_cap:
                 log.warning(
@@ -159,8 +232,13 @@ class CostGuard:
                 return Denial("monthly_cap")
             if capability == "video" and month + ceiling > self.month_soft_cap:
                 return Denial("monthly_cap")
+            if capability in LIVE_CAPABILITIES:
+                live = await _spent(session, day_start(now), user_id, live=True)
+                if live + ceiling > self.user_daily_live_cap:
+                    log.info("ai budget: user live allowance", extra={"capability": capability})
+                    return Denial("user_live_daily_cap")
             day = await _spent(session, day_start(now), user_id)
-            if capability != "video" and day + ceiling > self.user_daily_cap:
+            if capability not in OWN_DAY_BUDGET and day + ceiling > self.user_daily_cap:
                 log.info("ai budget: user daily cap", extra={"capability": capability})
                 return Denial("user_daily_cap")
             row = AIUsage(
@@ -175,7 +253,9 @@ class CostGuard:
             await session.flush()
             return Reservation(id=row.id, capability=capability, model=model, ceiling=ceiling)
 
-    async def settle(self, reservation: Reservation, meter: UsageMeter, outcome: str) -> None:
+    async def settle(
+        self, reservation: Reservation, meter: UsageMeter | VoiceMeter, outcome: str
+    ) -> None:
         cost = meter.cost
         async with self._sessionmaker() as session, session.begin():
             await session.execute(

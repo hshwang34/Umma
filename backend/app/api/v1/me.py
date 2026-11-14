@@ -2,21 +2,39 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.core.security import CurrentUser
+from app.core.security import CurrentUser, SettingsDep
 from app.db.engine import DbSession
 from app.domains.matching.dictionary import load_dictionary
 from app.domains.recipes import service as recipes_service
 from app.domains.recipes.schemas import MyRecipeList, RecipeCardList
 from app.domains.users import preferences
+from app.domains.users import service as users_service
 from app.domains.users.preferences import PreferencesIn, PreferencesOut
-from app.domains.users.schemas import UserOut
+from app.domains.users.schemas import UserOut, UserPatch
 
 router = APIRouter(tags=["me"])
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> UserOut:
-    return UserOut.from_model(user)
+async def me(user: CurrentUser, settings: SettingsDep) -> UserOut:
+    """Current user, including the ``free`` / ``paid`` entitlement (brief 012)."""
+    return UserOut.from_model(user, settings)
+
+
+@router.patch("/me", response_model=UserOut)
+async def patch_me(
+    body: UserPatch, session: DbSession, user: CurrentUser, settings: SettingsDep
+) -> UserOut:
+    """Set the cook/creator role chosen in onboarding (brief 015)."""
+    return UserOut.from_model(await users_service.set_role(session, user, body.role), settings)
+
+
+@router.post("/me/onboarding/complete", response_model=UserOut)
+async def complete_onboarding(
+    session: DbSession, user: CurrentUser, settings: SettingsDep
+) -> UserOut:
+    """Mark first-run onboarding done. Idempotent (brief 015)."""
+    return UserOut.from_model(await users_service.complete_onboarding(session, user), settings)
 
 
 @router.get("/me/saved", response_model=RecipeCardList)

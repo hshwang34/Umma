@@ -32,7 +32,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Protocol, TypeVar
 
@@ -45,18 +45,24 @@ from pydantic import BaseModel, Field
 from app.ai.budget import Capability, UsageMeter
 from app.ai.pricing import price_for
 from app.ai.prompts import (
+    CAPTURE_DRAFT_SYSTEM,
+    CAPTURE_INTERVIEW_SYSTEM,
     COACH_SYSTEM,
     INSPECT_SYSTEM,
     PANTRY_SYSTEM,
+    RECEIPT_SYSTEM,
     SUBSTITUTION_SYSTEM,
     VIDEO_SYSTEM,
     data_block,
 )
 from app.ai.providers.base import (
+    MAX_RECEIPT_LINES,
+    CaptureInterviewRequest,
     CoachRequest,
     CoachResponse,
     ExtractedRecipeDraft,
     ExtractionRequest,
+    GapDecision,
     GroundingRef,
     InspectRequest,
     InspectResponse,
@@ -64,11 +70,15 @@ from app.ai.providers.base import (
     PantryObservation,
     PantryObservationRequest,
     ProposedAction,
+    ReceiptDraft,
+    ReceiptLine,
+    ReceiptRequest,
     StrictModel,
     SubstitutionKind,
     SubstitutionRequest,
     SubstitutionResponse,
     SubstitutionSuggestion,
+    TranscriptExtractionRequest,
     UncertaintyLevel,
 )
 from app.ai.video import VideoExtractionDraft, salvage_video, to_extracted
@@ -95,6 +105,11 @@ MAX_OUTPUT_TOKENS: dict[str, int] = {
     "pantry_transcript": 3072,
     "substitution": 3072,
     "video": 16384,
+    "capture": 1024,
+    "capture_draft": 16384,
+    # Brief 017: up to 80 lines at ~70 output tokens each (a long supermarket receipt), with
+    # headroom. A longer answer is cut off, which is a malformed read, never a partial save.
+    "pantry_receipt": 8192,
 }
 # Video input estimate (brief 008): Gemini bills ~70 tokens per frame at 1 fps with
 # MEDIA_RESOLUTION_LOW plus 32 tokens/s of audio; 100 tok/s of video is a deliberate over-estimate,
@@ -153,6 +168,23 @@ class PantryDraft(StrictModel):
     unknowns: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ReceiptLineDraft(StrictModel):
+    raw_text: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=80)
+    is_food: bool
+    count: int | None = Field(default=None, ge=1)
+    quantity: float | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, max_length=16)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ReceiptReadDraft(StrictModel):
+    purchased_on: date | None = None
+    store: str | None = Field(default=None, max_length=120)
+    total: float | None = None
+    lines: list[ReceiptLineDraft] = Field(default_factory=list, max_length=MAX_RECEIPT_LINES)
+
+
 class SubstitutionSuggestionDraft(StrictModel):
     candidate: str = Field(min_length=1, max_length=120)
     kind: SubstitutionKind
@@ -165,6 +197,12 @@ class SubstitutionSuggestionDraft(StrictModel):
     risks: list[str] = Field(default_factory=list, max_length=6)
 
 
+class CaptureExtractionDraft(VideoExtractionDraft):
+    """The video draft shape (spans always null) plus the creator's own phrases."""
+
+    creator_notes: list[str] = Field(default_factory=list, max_length=6)
+
+
 class SubstitutionDraft(StrictModel):
     suggestions: list[SubstitutionSuggestionDraft] = Field(default_factory=list, max_length=3)
     cannot_substitute: bool = False
@@ -173,7 +211,10 @@ class SubstitutionDraft(StrictModel):
 
 # --- Schema derivation ---------------------------------------------------------------------
 
-_DROP_KEYS = {"title", "default", "examples"}
+# ``maxItems``: the API answers 400 "Request contains an invalid argument" when a response schema
+# carries large or several list limits (PantryDraft's 40/8/20 fails, a single 5 passes; found with
+# real calls on 2026-11-14). List lengths are still enforced by Pydantic on the parsed answer.
+_DROP_KEYS = {"title", "default", "examples", "maxItems"}
 
 
 def gemini_schema(model: type[BaseModel]) -> dict[str, Any]:
@@ -364,8 +405,11 @@ class GeminiProvider:
             "inspect": settings.gemini_model_inspect,
             "pantry_photo": settings.gemini_model_pantry,
             "pantry_transcript": settings.gemini_model_pantry,
+            "pantry_receipt": settings.gemini_model_pantry,
             "substitution": settings.gemini_model_substitution,
             "video": settings.gemini_model_video,
+            "capture": settings.gemini_model_capture,
+            "capture_draft": settings.gemini_model_capture,
         }
         self._deadline_seconds = settings.gemini_timeout_seconds
         self._video_deadline_seconds = settings.gemini_video_timeout_seconds
@@ -454,6 +498,13 @@ class GeminiProvider:
         ]
         return self._plan("pantry_transcript", PANTRY_SYSTEM, contents, PantryDraft)
 
+    def plan_read_receipt(self, request: ReceiptRequest) -> CallPlan:
+        contents: list[Any] = [
+            "Read the purchased lines on the attached grocery receipt photo.",
+            types.Part.from_bytes(data=request.image_bytes, mime_type=request.image_mime_type),
+        ]
+        return self._plan("pantry_receipt", RECEIPT_SYSTEM, contents, ReceiptReadDraft)
+
     def plan_suggest(self, request: SubstitutionRequest) -> CallPlan:
         contents = [
             "Suggest substitutions for the missing ingredient.",
@@ -491,8 +542,26 @@ class GeminiProvider:
             media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
         )
 
+    def plan_decide(self, request: CaptureInterviewRequest) -> CallPlan:
+        contents = [
+            "Look at what the creator just said and decide whether anything is missing.",
+            data_block("capture_data", request.model_dump(mode="json")),
+        ]
+        return self._plan("capture", CAPTURE_INTERVIEW_SYSTEM, contents, GapDecision)
+
+    def plan_capture_draft(self, request: TranscriptExtractionRequest) -> CallPlan:
+        contents = [
+            "Write a draft recipe from what the creator said while cooking.",
+            data_block("capture_data", request.model_dump(mode="json")),
+        ]
+        return self._plan("capture_draft", CAPTURE_DRAFT_SYSTEM, contents, CaptureExtractionDraft)
+
     def plan_for(self, capability: Capability, request: Any) -> CallPlan:
         match capability:
+            case "capture":
+                return self.plan_decide(request)
+            case "capture_draft":
+                return self.plan_capture_draft(request)
             case "video":
                 return self.plan_video(request)
             case "coach":
@@ -501,6 +570,8 @@ class GeminiProvider:
                 return self.plan_inspect(request)
             case "pantry_photo" | "pantry_transcript":
                 return self.plan_observe(request)
+            case "pantry_receipt":
+                return self.plan_read_receipt(request)
             case "substitution":
                 return self.plan_suggest(request)
         raise ValueError(capability)  # pragma: no cover
@@ -698,12 +769,38 @@ class GeminiProvider:
             log.warning("gemini file delete failed", extra={"error_type": type(exc).__name__})
             return False
 
+    async def decide(
+        self, request: CaptureInterviewRequest, meter: UsageMeter | None = None
+    ) -> GapDecision:
+        return await self.run(self.plan_decide(request), GapDecision, meter)
+
+    async def extract_transcript(
+        self, request: TranscriptExtractionRequest, meter: UsageMeter | None = None
+    ) -> ExtractedRecipeDraft:
+        """Transcript → draft (brief 014). Spans are dropped: there is no video to clip."""
+        draft = await self.run(
+            self.plan_capture_draft(request),
+            CaptureExtractionDraft,
+            meter,
+            salvage=_salvage_capture,
+            deadline_seconds=self._video_deadline_seconds,
+        )
+        return to_capture_extracted(draft)
+
     async def observe(
         self, request: PantryObservationRequest, meter: UsageMeter | None = None
     ) -> PantryObservation:
         plan = self.plan_observe(request)
         draft = await self.run(plan, PantryDraft, meter, salvage=_salvage_pantry)
         return to_pantry_observation(request.mode, draft)
+
+    async def read_receipt(
+        self, request: ReceiptRequest, meter: UsageMeter | None = None
+    ) -> ReceiptDraft:
+        """No salvage, unlike ``observe``: receipt lines can be saved without review (brief 017),
+        so a half-read receipt is an error to retry, never a partial result."""
+        draft = await self.run(self.plan_read_receipt(request), ReceiptReadDraft, meter)
+        return to_receipt_draft(draft)
 
     async def suggest(
         self, request: SubstitutionRequest, meter: UsageMeter | None = None
@@ -777,6 +874,22 @@ def to_pantry_observation(
     )
 
 
+def _decimal(value: float | None) -> Decimal | None:
+    return None if value is None else Decimal(str(value))
+
+
+def to_receipt_draft(draft: ReceiptReadDraft) -> ReceiptDraft:
+    return ReceiptDraft(
+        purchased_on=draft.purchased_on,
+        store=draft.store,
+        total=_decimal(draft.total),
+        lines=[
+            ReceiptLine(**{**line.model_dump(), "quantity": _decimal(line.quantity)})
+            for line in draft.lines
+        ],
+    )
+
+
 def to_substitution_response(
     request: SubstitutionRequest, draft: SubstitutionDraft
 ) -> SubstitutionResponse:
@@ -789,6 +902,21 @@ def to_substitution_response(
         cannot_substitute=draft.cannot_substitute,
         reason=draft.reason,
     )
+
+
+def to_capture_extracted(draft: VideoExtractionDraft) -> ExtractedRecipeDraft:
+    extracted = to_extracted(draft)
+    steps = [
+        s.model_copy(update={"source_start_ms": None, "source_end_ms": None})
+        for s in extracted.steps
+    ]
+    notes = list(draft.creator_notes) if isinstance(draft, CaptureExtractionDraft) else []
+    return extracted.model_copy(update={"steps": steps, "creator_notes": notes})
+
+
+def _salvage_capture(text: str) -> CaptureExtractionDraft | None:
+    partial = salvage_video(text)
+    return CaptureExtractionDraft(**partial.model_dump()) if partial is not None else None
 
 
 PARTIAL_NOTE = "Some items couldn't be read. Check the list and add anything missing by hand."

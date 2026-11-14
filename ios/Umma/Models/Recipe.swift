@@ -23,9 +23,21 @@ struct RecipeCard: Codable, Sendable, Identifiable, Hashable {
     /// Brief 003: true/false for a signed-in caller, null when unauthenticated. Absent in Slice 0
     /// payloads, so it stays optional.
     var saved: Bool? = nil
+    /// Brief 015: only on For You cards.
+    var feed: FeedInfo? = nil
+    /// Brief 019: who took a stock cover photo. Cards decode it but never display it.
+    var coverCredit: CoverCredit? = nil
 
     var id: UUID { recipeId }
     var coverImageURL: URL? { coverImageUrl.flatMap(URL.init(string:)) }
+}
+
+/// Brief 019: the additive, nullable `cover_credit` on cards and detail. `source` stays a string,
+/// so a future provider decodes instead of failing the whole recipe.
+struct CoverCredit: Codable, Sendable, Hashable {
+    let name: String
+    let url: String
+    let source: String
 }
 
 struct RecipePage: Codable, Sendable, Equatable {
@@ -56,6 +68,8 @@ struct RecipeDetail: Codable, Sendable, Identifiable, Hashable {
     /// Brief 003 additions; optional so Slice 0 fixtures still decode.
     var saved: Bool? = nil
     var shareUrl: String? = nil
+    /// Brief 019: who took a stock cover photo; null for creator photos and older payloads.
+    var coverCredit: CoverCredit? = nil
 
     var id: UUID { recipeId }
     var coverImageURL: URL? { coverImageUrl.flatMap(URL.init(string:)) }
@@ -80,8 +94,12 @@ struct Ingredient: Codable, Sendable, Identifiable, Hashable {
     let optional: Bool
     let preparation: String?
     let notes: String?
+    /// Brief 008/014: set on AI-drafted ingredients; omitted on the wire when not set (all
+    /// hand-authored data), never sent as `null`.
+    var evidenceOrigin: EvidenceOrigin? = nil
 
-    /// Encodes absent optionals as explicit `null` so a PATCH body matches the detail shape exactly.
+    /// Encodes absent optionals as explicit `null` so a PATCH body matches the detail shape exactly
+    /// (except `evidence_origin`, which the contract omits when unset).
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -91,6 +109,7 @@ struct Ingredient: Codable, Sendable, Identifiable, Hashable {
         try container.encode(optional, forKey: .optional)
         try container.encode(preparation, forKey: .preparation)
         try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(evidenceOrigin, forKey: .evidenceOrigin)
     }
 }
 

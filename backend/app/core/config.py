@@ -58,24 +58,87 @@ class Settings(BaseSettings):
     dev_login_lockout_window_minutes: int = 15
     dev_login_max_failures_per_window: int = 10
     ai_provider: Literal["mock", "gemini"] = "mock"
+    # Brief 012 tier plumbing (DECISIONS #22): every account gets this entitlement until
+    # purchases exist. The beta runs everyone on ``paid``; there is no per-user column yet.
+    default_entitlement: Literal["free", "paid"] = "paid"
 
     # Gemini (Slice 4, DECISIONS #19). The key is a SecretStr: it never appears in reprs, logs
     # or error bodies, and it never leaves the backend. Each capability has its own model so a
     # price or quality change can be made per feature; ids are re-verified at build time.
     gemini_api_key: SecretStr | None = None
+    # Brief 019 stock photos. Optional: without a key, Pexels lookups are skipped. A SecretStr,
+    # so it never appears in reprs or logs; it is only sent in Pexels' Authorization header.
+    pexels_api_key: SecretStr | None = None
+    pexels_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     gemini_model_coach: str = "gemini-3.8-flash"
     gemini_model_inspect: str = "gemini-3.8-flash"
     gemini_model_substitution: str = "gemini-3.8-flash"
     gemini_model_pantry: str = "gemini-3.5-flash-lite"
     gemini_model_video: str = "gemini-3.8-flash"  # brief 008
+    gemini_model_capture: str = "gemini-3.8-flash"  # brief 014 interviewer + draft
+    gemini_model_live: str = "gemini-3.8-live"  # brief 016 live pantry scan (phone-side session)
+    # Brief 014: a capture transcript nobody published is deleted after this many idle days.
+    capture_transcript_ttl_days: int = Field(default=30, ge=1, le=365)
     # Whole-call deadline for interactive features, retries included (brief 007).
     gemini_timeout_seconds: float = Field(default=18.0, gt=0, le=60)
 
     # Cost guard (DECISIONS #18/#19): per-user UTC-day cap, then the global UTC-month soft
     # degrade (video extraction off) and hard stop (labelled mock fallback for everything).
     ai_user_daily_cap_usd: float = Field(default=0.25, ge=0)
+    # Live pantry scan's own per-user UTC-day allowance (brief 016, PM 2026-11-13): 2 full
+    # scans ≈ 8 sessions x $0.141. Live spend is outside the cap above, inside the monthly caps.
+    ai_user_daily_live_cap_usd: float = Field(default=1.15, ge=0)
     ai_month_soft_cap_usd: float = Field(default=15.0, ge=0)
     ai_month_hard_cap_usd: float = Field(default=22.0, ge=0)
+
+    # Live pantry scan (brief 016). The phone gets a single-use token; the server can't see live
+    # usage, so each token reserves a worst-case session and settles at that ceiling. The ceiling
+    # covers the token's whole lifetime (not just LIVE_MAX_SESSION_SECONDS), so a client that
+    # ignores the session limit is still paid for. Spike: 9 nudged turns billed ~43k prompt tokens
+    # in 36 s; with a nudge every 2 frames plus silent audio we assume ~70k prompt + 2k output
+    # (audio) tokens per 30 s, i.e. 105k + 3k over the 45 s lifetime. iOS rotates sessions every
+    # LIVE_MAX_SESSION_SECONDS and fetches a new token for each one.
+    live_token_ttl_seconds: int = Field(default=45, ge=30, le=1800)
+    live_token_start_seconds: int = Field(default=15, ge=10, le=600)
+    live_max_session_seconds: int = Field(default=30, ge=5, le=600)
+    live_nudge_text: str = "Report any new items now visible."
+    live_nudge_every_frames: int = Field(default=2, ge=1, le=30)
+    live_frame_max_fps: float = Field(default=1.0, gt=0, le=2)
+    live_ceiling_input_tokens: int = Field(default=105_000, ge=0)
+    live_ceiling_output_tokens: int = Field(default=3_000, ge=0)
+    live_tokens_per_user_per_hour: int = Field(default=60, ge=0)
+    live_token_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
+
+    # Paid server voice (brief 012 PR 2, DECISIONS #26): Deepgram speech-to-text and turn
+    # detection, ElevenLabs voice. Keys are optional; without them the voice routes answer
+    # "unavailable" and the phone stays on the on-device (Free) pipeline. Backend only.
+    # Master switch, off by default: server voice spends money, so it stays dark (routes answer
+    # VOICE_UNAVAILABLE even with keys set) until the PM's go (DECISIONS #26). It gates only
+    # server voice, never the Free/Paid entitlement other server AI features read.
+    paid_voice_enabled: bool = False
+    deepgram_api_key: SecretStr | None = None
+    deepgram_model: str = "nova-3"
+    # Deepgram turn detection: silence that ends a phrase, and the gap that ends an utterance.
+    deepgram_endpointing_ms: int = Field(default=300, ge=10, le=5000)
+    deepgram_utterance_end_ms: int = Field(default=1000, ge=1000, le=5000)
+    elevenlabs_api_key: SecretStr | None = None
+    elevenlabs_voice_id: str | None = None
+    # Flash v2.5: ElevenLabs' low-latency model (~75 ms model time), half the price of v2/v3.
+    elevenlabs_model: str = "eleven_flash_v2_5"
+    elevenlabs_output_format: Literal["pcm_16000", "pcm_22050", "pcm_24000"] = "pcm_24000"
+    voice_tts_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    # WS /v1/voice/stream limits.
+    voice_max_session_seconds: int = Field(default=60 * 60, ge=10)
+    voice_idle_timeout_seconds: int = Field(default=60, ge=5)
+    voice_max_streams_per_user: int = Field(default=1, ge=1, le=5)
+    voice_max_frame_bytes: int = Field(default=16_000, ge=640)  # 0.5 s of 16 kHz s16le mono
+    # A stream that sends keepalives but no audio this long is closed (the phone reopens it).
+    voice_no_audio_timeout_seconds: int = Field(default=300, ge=10)
+    # keepalive / finalize / other text frames per second before the stream is closed.
+    voice_max_controls_per_second: int = Field(default=10, ge=1)
+    # POST /v1/voice/speak limits.
+    voice_speak_max_chars: int = Field(default=600, ge=1, le=5000)
+    voice_speak_per_minute: int = Field(default=20, ge=1)
 
     media_root: Path = BACKEND_DIR / "media"
     ffmpeg_path: str = "ffmpeg"
@@ -106,6 +169,9 @@ class Settings(BaseSettings):
     # month (declared size, counted at intent time, never refunded).
     video_max_pending_uploads: int = Field(default=2, ge=1)
     video_upload_bytes_per_month: int = Field(default=1024 * 1024 * 1024, gt=0)
+    # Brief 019 cover photos: JPEG only; bytes count toward the same monthly upload budget.
+    cover_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    cover_max_pending_uploads: int = Field(default=5, ge=1)
 
     # Extraction worker (``python -m app.workers.extraction``).
     worker_lease_seconds: int = Field(default=120, ge=10)
@@ -138,6 +204,10 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_MODE=dev is only allowed when ENVIRONMENT is dev or test")
         if self.ai_month_soft_cap_usd > self.ai_month_hard_cap_usd:
             raise ValueError("AI_MONTH_SOFT_CAP_USD must not exceed AI_MONTH_HARD_CAP_USD")
+        if self.live_token_start_seconds > self.live_token_ttl_seconds:
+            raise ValueError("LIVE_TOKEN_START_SECONDS must not exceed LIVE_TOKEN_TTL_SECONDS")
+        if self.live_max_session_seconds > self.live_token_ttl_seconds:
+            raise ValueError("LIVE_MAX_SESSION_SECONDS must not exceed LIVE_TOKEN_TTL_SECONDS")
         if self.dev_login_echo_code and self.environment != "test":
             raise ValueError("DEV_LOGIN_ECHO_CODE=true is only allowed when ENVIRONMENT=test")
         if self.environment == "prod" and (
@@ -150,6 +220,19 @@ class Settings(BaseSettings):
         ):
             raise ValueError("STORAGE_ENDPOINT_URL must be https:// in prod")
         return self
+
+    @property
+    def voice_stt_configured(self) -> bool:
+        if not self.paid_voice_enabled:
+            return False
+        return bool(self.deepgram_api_key and self.deepgram_api_key.get_secret_value())
+
+    @property
+    def voice_tts_configured(self) -> bool:
+        if not self.paid_voice_enabled:
+            return False
+        key = self.elevenlabs_api_key.get_secret_value() if self.elevenlabs_api_key else ""
+        return bool(key and self.elevenlabs_voice_id)
 
 
 @lru_cache

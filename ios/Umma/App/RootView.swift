@@ -13,6 +13,9 @@ struct RootView: View {
                     .background(SLColor.background)
             case .signedOut:
                 SignInView()
+            case .signedIn where environment.isOnboarding:
+                // Brief 015: until the server records onboarding finished.
+                OnboardingFlow()
             case .signedIn:
                 MainTabView()
                     .onAppear { environment.applyPendingDeepLink() }

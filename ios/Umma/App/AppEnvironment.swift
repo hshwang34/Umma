@@ -5,6 +5,8 @@ import Observation
 /// paint before the detail loads; a deep link only has the id.
 enum RecipeRoute: Hashable {
     case recipe(id: UUID, card: RecipeCard?)
+    /// Brief 015: a creator's profile (from a recipe's "by …" line or the Following list).
+    case creator(id: UUID)
 
     static func card(_ card: RecipeCard) -> RecipeRoute { .recipe(id: card.recipeId, card: card) }
 }
@@ -25,14 +27,32 @@ final class AppEnvironment {
     let camera: any CameraSource
     let speech: any SpeechInput
     let audio: any AudioOutput
+    /// Brief 012: "Run voice on this iPhone".
+    let voiceSettings: VoiceSettings
+    /// Builds the Free (on-device) voice transport, and the Paid one that wraps it as fallback.
+    let makeFreeVoiceTransport: @MainActor () -> any VoiceTransport
+    let makePaidVoiceTransport: @MainActor (any VoiceTransport) -> any VoiceTransport
     /// Brief 005: open cooking session (resume banner, floating pill, full-screen cooking view).
     let cooking: CookingSessionStore
 
     var selectedTab: Tab = .explore
     /// Explore's navigation stack. Deep links push onto it from any tab.
     var exploreRoutes: [RecipeRoute] = []
-    /// A link that arrived while signed out; applied once the user is signed in.
+    /// A link that arrived while signed out (or mid-onboarding); applied once the tabs show.
     private(set) var pendingDeepLink: DeepLink?
+    /// Brief 015 first-run onboarding (`feature.onboarding`).
+    /// On by default since brief 015 PR 9; `feature.onboarding = false` turns it off for demos.
+    /// `bool(forKey:)` also reads a launch argument (`-feature.onboarding NO` arrives as a string).
+    var onboardingEnabled = UserDefaults.standard.object(forKey: AppEnvironment.onboardingFlagKey) == nil
+        || UserDefaults.standard.bool(forKey: AppEnvironment.onboardingFlagKey)
+    /// Set by onboarding's "Record your first recipe"; Profile opens a new draft and clears it.
+    var requestNewRecipe = false
+    nonisolated static let onboardingFlagKey = "feature.onboarding"
+
+    /// True while the signed-in user still has to finish onboarding (the tabs aren't shown).
+    var isOnboarding: Bool {
+        onboardingEnabled && (auth.user?.needsOnboarding ?? false)
+    }
     /// Bumped whenever a recipe's saved state changes anywhere; the Saved tab refreshes on change.
     private(set) var savedRevision = 0
 
@@ -46,6 +66,13 @@ final class AppEnvironment {
 
     func notePantryChanged() {
         pantryRevision += 1
+    }
+
+    /// Brief 015: bumped after a follow / unfollow so Explore's feeds re-read.
+    private(set) var followRevision = 0
+
+    func noteFollowChanged() {
+        followRevision += 1
     }
 
     #if DEBUG
@@ -63,6 +90,9 @@ final class AppEnvironment {
          camera: any CameraSource,
          speech: any SpeechInput,
          audio: any AudioOutput,
+         voiceSettings: VoiceSettings? = nil,
+         makeFreeVoiceTransport: @escaping @MainActor () -> any VoiceTransport = { FakeVoiceTransport(isAvailable: false) },
+         makePaidVoiceTransport: @escaping @MainActor (any VoiceTransport) -> any VoiceTransport = { $0 },
          sessionCache: SessionCaching = InMemorySessionCache()) {
         self.serverSettings = serverSettings
         self.api = api
@@ -72,6 +102,9 @@ final class AppEnvironment {
         self.camera = camera
         self.speech = speech
         self.audio = audio
+        self.voiceSettings = voiceSettings ?? VoiceSettings()
+        self.makeFreeVoiceTransport = makeFreeVoiceTransport
+        self.makePaidVoiceTransport = makePaidVoiceTransport
         cooking = CookingSessionStore(service: api, cache: sessionCache, owner: { [weak auth, weak serverSettings] in
             guard let user = auth?.user, let server = serverSettings?.effectiveBaseURLString, !server.isEmpty else { return nil }
             return SessionOwner(userId: user.id, server: server)
@@ -89,6 +122,17 @@ final class AppEnvironment {
             previous?(oldValue, newValue)
             self?.discardNavigationState()
         }
+    }
+
+    /// A new voice session on the transport the signed-in user's tier calls for (brief 012).
+    func makeVoiceSession(config: VoiceSessionConfig = .init()) -> VoiceSession {
+        let transport = VoiceTierChoice.transport(
+            entitlement: auth.user?.entitlement,
+            runOnDevice: voiceSettings.runOnDevice,
+            makeFree: makeFreeVoiceTransport,
+            makePaid: makePaidVoiceTransport
+        )
+        return VoiceSession(transport: transport, config: config)
     }
 
     func discardNavigationState() {
@@ -114,7 +158,7 @@ final class AppEnvironment {
     }
 
     func open(_ link: DeepLink) {
-        guard auth.isSignedIn else {
+        guard auth.isSignedIn, !isOnboarding else {
             pendingDeepLink = link
             return
         }
@@ -163,6 +207,21 @@ final class AppEnvironment {
             camera: flags.phoneCamera ? PhoneCameraSource() : FakeCameraSource(isAvailable: false),
             speech: flags.phoneSpeech ? PhoneSpeechInput() : FakeSpeechInput(isAvailable: false),
             audio: flags.systemAudio ? SystemAudioOutput() : FakeAudioOutput(isAvailable: false),
+            voiceSettings: VoiceSettings(defaults: defaults),
+            // Off by flag, or on the simulator (no recognizer there), the Free tier is the fake,
+            // marked unavailable, so voice screens show an honest "voice is unavailable".
+            makeFreeVoiceTransport: {
+                let onDevice = OnDeviceVoiceTransport(enabled: flags.phoneVoice)
+                return onDevice.isAvailable ? onDevice : FakeVoiceTransport(isAvailable: false)
+            },
+            // Paid (brief 012 PR 2): server voice through our backend, falling back to the above.
+            makePaidVoiceTransport: { fallback in
+                PaidVoiceTransport(
+                    server: HTTPPaidVoiceServer(baseURL: UserDefaultsBaseURLProvider(defaults: defaults), token: tokenStore),
+                    audio: EnginePaidVoiceAudio(),
+                    fallback: fallback
+                )
+            },
             sessionCache: SessionCache()
         )
     }
@@ -202,7 +261,9 @@ final class AppEnvironment {
             captureFlags: .allOn,
             camera: FakeCameraSource(),
             speech: FakeSpeechInput(),
-            audio: FakeAudioOutput()
+            audio: FakeAudioOutput(),
+            voiceSettings: VoiceSettings(defaults: defaults),
+            makeFreeVoiceTransport: { FakeVoiceTransport() }
         )
     }
 }

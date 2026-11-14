@@ -35,7 +35,7 @@ from app.domains.recipes.schemas import (
     RecipePage,
     SaveStatus,
 )
-from app.domains.recipes.versions import version_meta
+from app.domains.recipes.versions import served_meta
 
 MAX_PAGE_SIZE = 100
 
@@ -76,7 +76,7 @@ def to_card(recipe: Recipe, *, saved: bool | None) -> RecipeCard:
     return RecipeCard(
         recipe_id=recipe.id,
         slug=recipe.slug,
-        **version_meta(recipe, version),
+        **served_meta(recipe, version),
         creator=CreatorRef(id=recipe.owner.id, display_name=recipe.owner.display_name),
         servings=version.servings,
         prep_minutes=version.prep_minutes,
@@ -107,7 +107,7 @@ def to_detail(
         recipe_version_id=version.id,
         version_number=version.version_number,
         slug=recipe.slug,
-        **version_meta(recipe, version),
+        **served_meta(recipe, version),
         creator=CreatorRef(id=recipe.owner.id, display_name=recipe.owner.display_name),
         creator_id=recipe.owner.id,
         servings=content.servings,
@@ -283,6 +283,27 @@ async def unsave(session: AsyncSession, user: User, recipe_id: uuid.UUID) -> Sav
     # ORM load-then-delete) so concurrent unsaves are all 200 with no stale-row warning.
     await session.execute(delete(Save).where(Save.user_id == user.id, Save.recipe_id == recipe_id))
     return SaveStatus(recipe_id=recipe_id, saved=False)
+
+
+async def public_recipes(
+    session: AsyncSession, owner_ids: Iterable[uuid.UUID] | None = None
+) -> list[Recipe]:
+    """Every public, published recipe (optionally only these owners), newest first.
+
+    Brief 015 creator pages and feeds read the whole published set; it is small (tens of
+    recipes). Page or cache this before the catalogue grows.
+    """
+    stmt = _base_query().where(*_public_published())
+    if owner_ids is not None:
+        stmt = stmt.where(Recipe.owner_user_id.in_(list(owner_ids)))
+    stmt = stmt.order_by(Recipe.published_at.desc(), Recipe.id.desc())
+    return list((await session.execute(stmt)).unique().scalars().all())
+
+
+async def cards_for(
+    session: AsyncSession, rows: list[Recipe], user: User | None
+) -> list[RecipeCard]:
+    return await _cards(session, rows, user)
 
 
 async def list_saved(session: AsyncSession, user: User) -> list[RecipeCard]:

@@ -78,7 +78,7 @@ Landscape already looks clean. A cooking screen should feel calm.
 
 ## Out of scope
 - Buying a custom domain (it spends money). Done separately afterwards: `ummacooks.app`
-  (DECISIONS #26).
+  (DECISIONS #36).
 - Voice mode itself (brief 012).
 - Changing the glasses DAT registration name beyond the bundle ID.
 - Rewriting git history.

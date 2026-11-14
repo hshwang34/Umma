@@ -10,21 +10,29 @@ import re
 from pathlib import Path
 from typing import Any
 
+from app.ai import capture_rules
 from app.ai.providers.base import (
+    CaptureInterviewRequest,
     CoachRequest,
     CoachResponse,
     ExtractedRecipeDraft,
     ExtractionRequest,
+    GapDecision,
     GroundingRef,
     InspectRequest,
     InspectResponse,
+    LiveTokenSpec,
+    MintedLiveToken,
     PantryCandidate,
     PantryObservation,
     PantryObservationRequest,
     ProposedAction,
+    ReceiptDraft,
+    ReceiptRequest,
     SubstitutionRequest,
     SubstitutionResponse,
     SubstitutionSuggestion,
+    TranscriptExtractionRequest,
 )
 from app.ai.video import VideoExtractionDraft, to_extracted
 from app.domains.safety.content import is_doneness_question
@@ -34,6 +42,7 @@ PHOTO_FIXTURE_SUBDIR = "pantry_observations"
 VIDEO_FIXTURE_SUBDIR = "video_extractions"
 DEFAULT_VIDEO_FIXTURE = "demo"
 DEFAULT_PHOTO_FIXTURE = "demo_counter"
+RECEIPT_FIXTURE = "receipts/demo.json"
 
 _NUMBER_WORDS: dict[str, float] = {
     "a": 1,
@@ -393,6 +402,16 @@ class MockAIProvider:
             extracted = extracted.model_copy(update={"title": request.title_hint})
         return extracted
 
+    # CaptureInterviewer / TranscriptRecipeExtractor (brief 014): deterministic rules that only
+    # use what the creator said; nothing is invented.
+    async def decide(self, request: CaptureInterviewRequest) -> GapDecision:
+        return capture_rules.interview(request)
+
+    async def extract_transcript(
+        self, request: TranscriptExtractionRequest
+    ) -> ExtractedRecipeDraft:
+        return capture_rules.extract(request)
+
     # PantryExtractor
     async def observe(self, request: PantryObservationRequest) -> PantryObservation:
         if request.mode == "transcript":
@@ -419,6 +438,12 @@ class MockAIProvider:
             notes=["I can't confirm what this is from the image. Try a closer, labeled shot."],
             unknowns=["what is in this photo"],
         )
+
+    async def read_receipt(self, request: ReceiptRequest) -> ReceiptDraft:
+        """The fixture receipt, labelled as a demo: the mock never reads the photo."""
+        path = self.fixtures_dir / "expected_outputs" / RECEIPT_FIXTURE
+        draft = ReceiptDraft.model_validate_json(path.read_text(encoding="utf-8"))
+        return draft.model_copy(update={"demo": True})
 
     def _photo_fixture(self, image_ref: str | None) -> dict[str, Any] | None:
         if not image_ref:
@@ -569,4 +594,23 @@ class MockAIProvider:
             food_safety_certified=False,
             grounded_revision=request.grounded_revision,
             recommended_step_change=None,
+        )
+
+
+class MockLiveTokenMinter:
+    """Offline ``LiveTokenMinter`` (brief 016): records what each token would be locked to and
+    returns an obviously fake token. Raises ``fail`` when set. Never touches the network."""
+
+    def __init__(self, fail: Exception | None = None) -> None:
+        self.fail = fail
+        self.specs: list[LiveTokenSpec] = []
+
+    async def mint(self, spec: LiveTokenSpec) -> MintedLiveToken:
+        self.specs.append(spec)
+        if self.fail is not None:
+            raise self.fail
+        return MintedLiveToken(
+            token=f"mock-live-token-{len(self.specs)}",
+            expire_time=spec.expire_time,
+            new_session_expire_time=spec.new_session_expire_time,
         )

@@ -32,7 +32,7 @@ Blog, waitlist backend, analytics, custom domain purchase (optional later — sp
 1. **Domain?** A) free `umma.vercel.app` (if available), B) buy a domain (~$12/yr).
    **Recommendation:** A for the beta.
    → *Answer:* **A, free *.vercel.app** (DECISIONS #20). Superseded: `umma.vercel.app` was taken,
-   so the PM bought `ummacooks.app` (DECISIONS #26).
+   so the PM bought `ummacooks.app` (DECISIONS #36).
 
 ## Engineering decisions (filled in by the lead while building)
 - Hosting: Vercel project `umma-site` (team `hyunseok-hwang-s-projects`), Git-connected to this

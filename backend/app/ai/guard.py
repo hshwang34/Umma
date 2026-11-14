@@ -23,25 +23,31 @@ from app.ai.budget import Capability, CostGuard, Denial, UsageMeter
 from app.ai.notice import AINotice
 from app.ai.providers.base import (
     AIProvider,
+    CaptureInterviewRequest,
     CoachRequest,
     CoachResponse,
     ExtractedRecipeDraft,
     ExtractionRequest,
+    GapDecision,
     InspectRequest,
     InspectResponse,
     PantryObservation,
     PantryObservationRequest,
+    ReceiptDraft,
+    ReceiptRequest,
     SubstitutionRequest,
     SubstitutionResponse,
+    TranscriptExtractionRequest,
 )
 from app.ai.providers.gemini import GeminiProvider
 from app.ai.providers.mock import MockAIProvider
-from app.core.errors import AIBlocked, ProviderNotConfigured, ProviderOutputInvalid
+from app.core.errors import AIBlocked, AIResting, ProviderNotConfigured, ProviderOutputInvalid
 
 log = logging.getLogger("umma.ai.guard")
 
 T = TypeVar("T")
 
+RESTING_RECEIPT_MESSAGE = "AI is resting, so this receipt wasn't read. Nothing was added."
 RESTING_PHOTO_NOTE = "AI is resting, so this photo wasn't read. Type or say your items instead."
 
 
@@ -114,6 +120,20 @@ class GuardedProvider:
     async def extract(self, request: ExtractionRequest) -> ExtractedRecipeDraft:
         raise ProviderNotConfigured("Video extraction runs in the background worker")
 
+    async def extract_transcript(
+        self, request: TranscriptExtractionRequest
+    ) -> ExtractedRecipeDraft:
+        raise ProviderNotConfigured("Capture drafts are written by the background worker")
+
+    async def decide(self, request: CaptureInterviewRequest) -> GapDecision:
+        """The capture interviewer (brief 014): over a cap, the deterministic rules ask."""
+        return await self._run(
+            "capture",
+            request,
+            lambda m: self._real.decide(request, m),
+            lambda: self._fallback.decide(request),
+        )
+
     async def observe(self, request: PantryObservationRequest) -> PantryObservation:
         capability: Capability = "pantry_photo" if request.mode == "photo" else "pantry_transcript"
 
@@ -129,6 +149,17 @@ class GuardedProvider:
             return await self._fallback.observe(request)
 
         return await self._run(capability, request, lambda m: self._real.observe(request, m), demo)
+
+    async def read_receipt(self, request: ReceiptRequest) -> ReceiptDraft:
+        """Over a cap this raises ``AIResting`` (and sets ``notice``): an empty draft would look
+        like a receipt with nothing on it, and fixture lines would invent a shop."""
+
+        async def resting() -> ReceiptDraft:
+            raise AIResting(RESTING_RECEIPT_MESSAGE)
+
+        return await self._run(
+            "pantry_receipt", request, lambda m: self._real.read_receipt(request, m), resting
+        )
 
     async def suggest(self, request: SubstitutionRequest) -> SubstitutionResponse:
         return await self._run(

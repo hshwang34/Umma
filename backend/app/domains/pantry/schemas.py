@@ -7,7 +7,7 @@ Write side is strict (unknown keys → 422) and every text field goes through th
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from functools import partial
 from typing import Annotated, Literal
 
@@ -33,6 +33,9 @@ QUANTITY_MAX = 1_000_000
 
 StorageLocationIn = Literal["fridge", "freezer", "pantry", "counter", "other"]
 SourceIn = Literal["manual", "voice", "photo"]
+# ``live`` is written only by a live scan's finish (brief 016) and ``receipt`` only by a receipt
+# read (brief 017), never by the public POST.
+SourceOut = Literal["manual", "voice", "photo", "live", "receipt"]
 ConfidenceBin = Literal["high", "medium", "unknown"]
 
 Label = Annotated[
@@ -68,7 +71,7 @@ class PantryItemOut(BaseModel):
     quantity_is_estimate: bool
     storage_location: str | None
     note: str | None
-    source: SourceIn
+    source: SourceOut
     confidence: float | None
     last_confirmed_at: datetime | None
     created_at: datetime
@@ -131,6 +134,16 @@ class CreatePantryItems(_Strict):
     observation_id: uuid.UUID | None = None
 
 
+class LiveNewItem(NewItem):
+    """Internal only: a live scan's auto-saved item. Not reachable from ``POST /v1/pantry``."""
+
+    source: Literal["live"]  # type: ignore[assignment]
+
+
+class CreateLivePantryItems(CreatePantryItems):
+    items: list[LiveNewItem] = Field(min_length=1, max_length=MAX_ITEMS_PER_REQUEST)  # type: ignore[assignment]
+
+
 class PantryPatch(_Strict):
     """Only the fields present are applied; ``raw_label`` may not be null."""
 
@@ -187,3 +200,118 @@ class ObservationOut(BaseModel):
     requires_confirmation: Literal[True] = True
     expires_at: datetime
     ai_notice: AINotice | None = notice_field()  # brief 007; omitted unless set
+
+
+# --- live scans (brief 016) -----------------------------------------------------------------
+
+LIVE_NAME_MAX = 120
+LIVE_EVIDENCE_MAX = 300
+LiveConfidence = Literal["high", "medium", "low"]
+LiveName = Annotated[
+    str,
+    BeforeValidator(partial(check_text, multiline=False, trim=True)),
+    StringConstraints(min_length=1, max_length=LIVE_NAME_MAX),
+]
+LiveKind = Annotated[
+    str,
+    BeforeValidator(partial(check_text, multiline=False, trim=True)),
+    StringConstraints(max_length=32),
+]
+LiveEvidence = Annotated[
+    str,
+    BeforeValidator(partial(check_text, multiline=True, trim=True)),
+    StringConstraints(max_length=LIVE_EVIDENCE_MAX),
+]
+
+
+class CreateLiveScan(_Strict):
+    demo: bool = False  # the live-token answer's demo flag; forced true off Gemini
+
+
+class LiveScanCreated(BaseModel):
+    id: uuid.UUID
+    demo: bool
+    expires_at: datetime
+
+
+class LiveItemIn(_Strict):
+    """What the model reported through ``add_item``. Untrusted data, never instructions."""
+
+    name: LiveName
+    kind: LiveKind | None = None
+    confidence: LiveConfidence
+    evidence: LiveEvidence | None = None
+
+
+class LiveItemOut(BaseModel):
+    status: Literal["new", "already_in_basket", "in_pantry"]
+    key: str
+    canonical_name: str
+    display_name: str
+    confidence: LiveConfidence
+    existing_pantry_item_id: uuid.UUID | None = None
+
+
+class LiveScanOut(BaseModel):
+    id: uuid.UUID
+    demo: bool
+    status: Literal["scanning", "finished"]
+    expires_at: datetime
+    items: list[LiveItemOut]
+
+
+class LiveReviewItem(LiveItemOut):
+    reason: Literal["unsure", "unrecognized", "in_pantry", "demo"]
+
+
+class LiveScanFinished(BaseModel):
+    saved: list[PantryItemOut]
+    review: list[LiveReviewItem]
+
+
+# --- receipts (brief 017) -------------------------------------------------------------------
+
+
+class ReceiptNewItem(NewItem):
+    """Internal only: a receipt line's auto-saved item. Not reachable from ``POST /v1/pantry``."""
+
+    source: Literal["receipt"]  # type: ignore[assignment]
+
+
+class CreateReceiptPantryItems(CreatePantryItems):
+    items: list[ReceiptNewItem] = Field(min_length=1, max_length=MAX_ITEMS_PER_REQUEST)  # type: ignore[assignment]
+
+
+class ReceiptSkipped(BaseModel):
+    raw_text: str
+    reason: Literal["unreadable", "unknown_item", "low_confidence"]
+
+
+class ReceiptWouldAdd(BaseModel):
+    """A demo receipt saves nothing; this is what a real one would have added."""
+
+    name: str
+    quantity: float
+    unit: str | None
+
+
+class ReceiptUndoResult(BaseModel):
+    """What a whole-receipt undo did. ``unchanged`` names the items it left alone because they
+    were edited, confirmed or merged into after the receipt."""
+
+    receipt_id: uuid.UUID
+    removed: int = 0  # items the receipt created, now deleted
+    restored: int = 0  # rebought items put back to their earlier amount and "last seen"
+    unchanged: list[str] = []
+
+
+class ReceiptResult(BaseModel):
+    receipt_id: uuid.UUID | None  # null when nothing was saved (demo included)
+    duplicate: bool = False
+    demo: bool = False
+    purchased_on: date | None
+    store: str | None
+    added: list[PantryItemOut] = []
+    merged: list[PantryItemOut] = []
+    skipped: list[ReceiptSkipped] = []
+    would_add: list[ReceiptWouldAdd] = []  # demo only

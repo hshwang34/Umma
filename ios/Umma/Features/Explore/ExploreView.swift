@@ -19,19 +19,24 @@ struct ExploreView: View {
                 }
             }
             .background(SLColor.background)
+            // Brief 019: our own header; the title stays for the tab's back-button label.
             .navigationTitle("Explore")
-            .navigationBarTitleDisplayMode(.large)
+            .tabRootHeader()
             .navigationDestination(for: RecipeRoute.self) { route in
                 switch route {
+                case .creator(let id):
+                    CreatorProfileView(creatorId: id)
+                        .pushedFromTabRoot()
                 case .recipe(let id, let card):
                     RecipeDetailView(recipeId: id, card: card)
+                        .pushedFromTabRoot()
                         .zoomTransition(sourceID: card == nil ? nil : id, in: zoom, enabled: !reduceMotion)
                 }
             }
         }
         .task {
             if model == nil {
-                let created = ExploreViewModel(service: environment.api, cache: environment.recipeCache)
+                let created = ExploreViewModel(service: environment.api, feeds: environment.api, cache: environment.recipeCache)
                 let api = environment.api
                 fits = ExploreFitLoader(fit: { try await api.fit(recipeVersionId: $0) })
                 model = created
@@ -54,8 +59,22 @@ private struct ExploreContent: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.lg) {
+                TabHeader(title: "Explore")
+                InPageSearchField(
+                    text: $model.searchText,
+                    prompt: "Search recipes or ingredients",
+                    identifier: "explore.search"
+                ) {
+                    Task { await model.submitSearchNow() }
+                }
+                if model.query.isEmpty {
+                    feedPicker
+                }
                 if let notice = model.offlineNotice {
                     cachedBanner(notice)
+                }
+                if model.showsPantryNudge {
+                    pantryNudge
                 }
                 switch model.phase {
                 case .idle, .loading:
@@ -92,9 +111,10 @@ private struct ExploreContent: View {
         .refreshable {
             await model.refresh()
         }
-        .searchable(text: $model.searchText, prompt: "Search recipes or ingredients")
-        .onSubmit(of: .search) {
-            Task { await model.submitSearchNow() }
+        .scrollDismissesKeyboard(.interactively)
+        .onChange(of: environment.followRevision) {
+            // Brief 015: a follow changes Following and the For You boost.
+            Task { await model.refresh() }
         }
         .task(id: FitKey(versions: model.cards.map(\.recipeVersionId), pantry: environment.pantryRevision)) {
             await fits.load(versionIds: model.cards.map(\.recipeVersionId), pantryRevision: environment.pantryRevision)
@@ -104,6 +124,44 @@ private struct ExploreContent: View {
     private struct FitKey: Hashable {
         let versions: [UUID]
         let pantry: Int
+    }
+
+    // MARK: Feeds (brief 015)
+
+    private var feedPicker: some View {
+        Picker("Feed", selection: $model.feed) {
+            ForEach(ExploreViewModel.Feed.allCases) { feed in
+                Text(feed.title).tag(feed)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("explore.feed")
+    }
+
+    private var pantryNudge: some View {
+        Button {
+            environment.selectedTab = .pantry
+        } label: {
+            HStack(spacing: Spacing.md) {
+                Image(systemName: "basket.fill")
+                    .font(SLFont.title3)
+                    .foregroundStyle(SLColor.accent)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text("See what you can make tonight").font(SLFont.headline).foregroundStyle(SLColor.textPrimary)
+                    Text("Scan your pantry and For You puts what fits first.")
+                        .font(SLFont.subheadline)
+                        .foregroundStyle(SLColor.textSecondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").foregroundStyle(SLColor.textSecondary).accessibilityHidden(true)
+            }
+            .padding(Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SLColor.accentSoft, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("explore.pantryNudge")
     }
 
     // MARK: Chips
@@ -140,7 +198,21 @@ private struct ExploreContent: View {
         )
     }
 
+    @ViewBuilder
     private var emptyState: some View {
+        if model.query.isEmpty, model.feed == .following {
+            EmptyStateView(
+                systemImage: "person.2",
+                title: "Nobody followed yet",
+                message: "Tap a cook’s name on any recipe to see their page and follow them. Their recipes land here.",
+                primary: EmptyStateView.Action("Browse For You") { model.feed = .forYou }
+            )
+        } else {
+            defaultEmptyState
+        }
+    }
+
+    private var defaultEmptyState: some View {
         let searching = !model.query.isEmpty
         return EmptyStateView(
             systemImage: searching ? "magnifyingglass" : "leaf",
@@ -215,9 +287,12 @@ private struct FilterChipButton: View {
 private struct ExploreSkeleton: View {
     var body: some View {
         ScrollView {
-            Self.cards
-                .padding(.horizontal, Spacing.screen)
-                .padding(.vertical, Spacing.sm)
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                TabHeader(title: "Explore")
+                Self.cards
+            }
+            .padding(.horizontal, Spacing.screen)
+            .padding(.vertical, Spacing.sm)
         }
         .scrollDisabled(true)
     }

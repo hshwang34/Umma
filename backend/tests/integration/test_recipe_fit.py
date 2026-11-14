@@ -56,7 +56,10 @@ async def test_empty_pantry_shape(client: AsyncClient) -> None:
         "counts",
         "items",
         "computed_at",
+        "key_ingredient_ref",
     }
+    assert result["key_ingredient_ref"] == "ing-1"  # chicken thighs: in the title, a protein
+    assert [i["ingredient_ref"] for i in result["items"] if i["is_key"]] == ["ing-1"]
     assert result["recipe_version_id"] == str(GOCHUJANG_V1)
     assert result["can_make"] is False and result["coverage"] == 0.0
     assert result["counts"] == {
@@ -76,9 +79,12 @@ async def test_empty_pantry_shape(client: AsyncClient) -> None:
         "pantry_item_id",
         "pantry_quantity",
         "conversion_note",
+        "is_key",
+        "last_confirmed_at",
     }
     assert item["required"] == {"quantity": 2.0, "unit": "lb"}
     assert item["pantry_item_id"] is None and item["pantry_quantity"] is None
+    assert item["last_confirmed_at"] is None
     datetime.fromisoformat(result["computed_at"])
 
 
@@ -187,8 +193,48 @@ async def test_stale_item_is_uncertain(client: AsyncClient, engine: AsyncEngine)
         )
     honey = by_ref(await fit(client, h, GOCHUJANG_V1))["ing-4"]
     assert honey["status"] == "uncertain" and "20 days ago" in honey["reason"]
+    assert (datetime.now(UTC) - datetime.fromisoformat(honey["last_confirmed_at"])).days == 20
     await client.post(f"/v1/pantry/{item['id']}/confirm", json={}, headers=h)
     assert by_ref(await fit(client, h, GOCHUJANG_V1))["ing-4"]["status"] == "available"
+
+
+@pytest.mark.usefixtures("seeded")
+async def test_key_ingredient_gates_can_make(client: AsyncClient, engine: AsyncEngine) -> None:
+    """Egg and Tomato Stir Fry: every required line present, so only the key (egg) decides."""
+    h = await bearer(client, "a@example.com")
+    version_id = seed_uuid("version", "egg-and-tomato-stir-fry:1")
+    await add(
+        client,
+        h,
+        m("tomatoes", 5),
+        m("canola oil", 1, "cup"),
+        m("green onions", 5),
+        m("sugar", 1, "cup"),
+        m("kosher salt", 1, "cup"),
+    )
+    result = await fit(client, h, version_id)
+    assert result["key_ingredient_ref"] == "ing-1" and result["can_make"] is False
+    assert by_ref(result)["ing-1"]["status"] == "missing"
+
+    (egg,) = await add(client, h, m("eggs", 6))
+    result = await fit(client, h, version_id)
+    key = by_ref(result)["ing-1"]
+    assert result["can_make"] is True and key["is_key"] is True
+    assert key["pantry_item_id"] == egg["id"]
+    assert datetime.fromisoformat(key["last_confirmed_at"]) == datetime.fromisoformat(
+        egg["last_confirmed_at"]
+    )
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "UPDATE pantry_items SET last_confirmed_at = now() - interval '15 days' "
+                "WHERE id = :id"
+            ),
+            {"id": egg["id"]},
+        )
+    result = await fit(client, h, version_id)
+    assert by_ref(result)["ing-1"]["status"] == "uncertain" and result["can_make"] is False
 
 
 @pytest.mark.usefixtures("seeded")

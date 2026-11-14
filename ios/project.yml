@@ -47,6 +47,9 @@ targets:
       properties:
         keychain-access-groups:
           - $(AppIdentifierPrefix)com.umma.ios
+        # Sign in with Apple (brief 010).
+        com.apple.developer.applesignin:
+          - Default
         # Universal-link stub (brief 003): the domain is not live yet; `onOpenURL` handles the path.
         com.apple.developer.associated-domains:
           - applinks:umma.app

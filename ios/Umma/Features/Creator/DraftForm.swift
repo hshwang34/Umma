@@ -72,7 +72,12 @@ struct DraftForm: Equatable, Sendable {
     var title = ""
     var summary = ""
     var tags: [String] = []
-    var servings = 4
+    var servings = 4 {
+        didSet { servingsUnset = false }
+    }
+    /// An AI draft whose servings the creator never said: shown as "needs review" and not sent
+    /// until she sets it (the 4 above is only the stepper's starting point, never a guess).
+    var servingsUnset = false
     var prepMinutes: Int?
     var cookMinutes: Int?
     var ingredients: [EditableIngredient] = []
@@ -87,6 +92,7 @@ struct DraftForm: Equatable, Sendable {
         summary = draft.summary ?? ""
         tags = draft.tags
         servings = draft.servings ?? 4
+        servingsUnset = draft.servings == nil && draft.extraction != nil
         prepMinutes = draft.prepMinutes
         cookMinutes = draft.cookMinutes
         ingredients = draft.ingredients.map(EditableIngredient.init(ingredient:))
@@ -118,7 +124,7 @@ struct DraftForm: Equatable, Sendable {
             summary: committedSummary,
             tags: DraftText.tags(tags),
             coverImageUrl: nil,
-            servings: servings,
+            servings: servingsUnset ? nil : servings,
             prepMinutes: prepMinutes,
             cookMinutes: cookMinutes,
             ingredients: ingredients.map { $0.ingredient },
@@ -214,6 +220,9 @@ struct EditableIngredient: Identifiable, Equatable, Sendable {
     var optional = false
     var preparation = ""
     var notes = ""
+    /// Carried through unchanged, like `EditableStep.evidenceOrigin`; publish turns
+    /// `ai_extracted` into `creator_reviewed` on the server.
+    var evidenceOrigin: EvidenceOrigin?
 
     init(id: String) {
         self.id = id
@@ -227,6 +236,7 @@ struct EditableIngredient: Identifiable, Equatable, Sendable {
         optional = ingredient.optional
         preparation = ingredient.preparation ?? ""
         notes = ingredient.notes ?? ""
+        evidenceOrigin = ingredient.evidenceOrigin
     }
 
     var ingredient: Ingredient {
@@ -237,7 +247,8 @@ struct EditableIngredient: Identifiable, Equatable, Sendable {
             unit: DraftText.nonEmpty(DraftText.singleLine(unit, max: DraftLimits.unit)),
             optional: optional,
             preparation: DraftText.nonEmpty(DraftText.singleLine(preparation, max: DraftLimits.preparation)),
-            notes: DraftText.nonEmpty(DraftText.multiLine(notes, max: DraftLimits.ingredientNotes))
+            notes: DraftText.nonEmpty(DraftText.multiLine(notes, max: DraftLimits.ingredientNotes)),
+            evidenceOrigin: evidenceOrigin
         )
     }
 

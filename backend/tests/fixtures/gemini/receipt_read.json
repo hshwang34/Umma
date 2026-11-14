@@ -1,0 +1,26 @@
+{
+  "response": {
+    "modelVersion": "gemini-3.5-flash-lite",
+    "responseId": "fixture",
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "{\"purchased_on\": \"2026-11-12\", \"store\": \"H Mart\", \"total\": 21.37, \"lines\": [{\"raw_text\": \"TOFU FIRM 2 @ 1.99\", \"name\": \"tofu\", \"is_food\": true, \"count\": 2, \"quantity\": null, \"unit\": null, \"confidence\": 0.94}, {\"raw_text\": \"NAPA CABBAGE 0.82 kg\", \"name\": \"napa cabbage\", \"is_food\": true, \"count\": 1, \"quantity\": 0.82, \"unit\": \"kg\", \"confidence\": 0.9}, {\"raw_text\": \"HM PRM KRN 44\", \"name\": null, \"is_food\": true, \"count\": 1, \"quantity\": null, \"unit\": null, \"confidence\": 0.25}, {\"raw_text\": \"BOTTLE DEPOSIT\", \"name\": null, \"is_food\": false, \"count\": null, \"quantity\": null, \"unit\": null, \"confidence\": 0.96}]}"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 1700,
+      "candidatesTokenCount": 240,
+      "thoughtsTokenCount": 0,
+      "totalTokenCount": 1940
+    }
+  }
+}

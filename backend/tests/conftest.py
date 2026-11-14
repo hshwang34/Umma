@@ -54,6 +54,10 @@ def settings() -> Settings:
         jwt_secret=TEST_JWT_SECRET,
         log_level="WARNING",
         fixtures_dir=FIXTURES_DIR,
+        # Never reach a paid voice vendor from tests, even with keys in the environment.
+        deepgram_api_key=None,
+        elevenlabs_api_key=None,
+        elevenlabs_voice_id=None,
     )
 
 

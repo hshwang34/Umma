@@ -250,7 +250,137 @@ must be rebased onto the renamed (Umma) tree first.
   and AI-drafted fields are labelled.
 *Lives in:* `docs/product/briefs/014-voice-recipe-capture.md`.
 
-#26 · 2026-11-13 · **Product site domain: `ummacooks.app`, auto-deployed from `main`.** Supersedes
+#26 · 2026-11-13 · **Brief 012 is unblocked: voice core first; Paid voice on Deepgram + ElevenLabs.**
+- **Order:**
+  - PR 1, voice core: the voice session, the voice bar with live captions, the Free tier on the
+    iPhone (Apple speech and voice, echo-cancelled, with pause detection), and the Free/Paid
+    entitlement (everyone is Paid in the beta, by config).
+  - PR 2: Paid server voice.
+  - PR 3+: the cooking, pantry and discovery cards, and landscape.
+  - Brief 014's recording screen builds on PR 1.
+- **Paid vendors:** Deepgram for streaming speech-to-text and turn detection, ElevenLabs for the
+  agent's voice. These are two new paid vendors on personal accounts. PR 2 needs both keys from the
+  PM, and its usage is priced into the `ai_usage` ledger under the existing caps. No spend before the
+  keys arrive and the PM gives a go.
+*Lives in:* `docs/product/briefs/012-voice-mode.md`.
+
+#27 · 2026-11-13 · **First-run onboarding and a minimal social graph (brief 015).** Pulls part of
+PRD §4.2 (P1) forward and amends #4 ("P0 social = feed/save/share only").
+- **Onboarding:** Welcome → cook or creator → allergies (explicit "No allergies" allowed) →
+  diets, cuisines, skill → follow suggested creators → pantry scan or "later" → For You.
+  Creators also get "Record your first recipe". No voice choice.
+- **Social graph:** users follow creators; creator profile pages; a Following list. Explore
+  splits into **For You** and **Following**. Likes, comments, followers lists and notifications
+  stay out (P2).
+- **Discovery of people:** suggested creators and creator profiles only. No contact matching and
+  no email or phone lookup.
+- **For You:** deterministic score on pantry fit (#22) plus favourite cuisines and followed
+  creators, lowered for diet mismatches. Allergy conflicts go last and are labelled, never hidden
+  silently and never called safe. No ML ranking.
+- **Seed content:** six fictional creator personas with original recipes. No real people or
+  brands.
+*Lives in:* `docs/product/briefs/015-onboarding-social.md`, `015-api-contract.md`.
+
+#28 · 2026-11-13 · **Live pantry scan on Gemini Live; only unsure items need confirming (brief 016).**
+- **Engine:** Gemini Live. The phone streams camera frames (max 1/s) straight to Google with a
+  single-use ephemeral token from our backend, locked to the model, instructions and one
+  `add_item` tool. Item positions on screen are not needed.
+- **Supersedes, for the pantry live scan only:** #4's "no continuous video to the model, single
+  deliberate frames only" and #25's "No Gemini Live". Narrows PRD §4.3 P2 ("continuous autonomous
+  scene tracking") and §9.5 ("visual capture deliberate") the same way. Everything else in #4 and
+  #25 stands.
+- **Exception to PAN-04 and "No silent state changes":** high-confidence items from a live scan
+  are saved without a per-item tap. They carry source `live`, show an "Auto-added" chip and can
+  be removed. Medium and low-confidence items, and items that match an existing pantry item, still
+  need the cook's tap.
+- **Unchanged:** the camera runs only while the scan screen is open, with a visible indicator.
+  Frames are never stored. Gemini runs on the paid tier only (#19), inside the existing caps,
+  with each scan reserving its worst-case cost. `AI_PROVIDER=mock` replays a labelled demo
+  script and never auto-saves.
+- **Spend:** the PM supplied the keys and asked for a real test (2026-11-13). The spike cost about $0.35.
+- **Allowance:** live scan has its own per-person daily allowance of 2 full scans (about 4 minutes,
+  about $1.15/day; each 30 s session reserves its 45 s token's worst case, about $0.14). It is separate from
+  the $0.25/day coach and photo cap (#19) and still inside the app-wide monthly soft and hard caps.
+*Lives in:* `docs/product/briefs/016-live-pantry-scan.md`.
+
+#29 · 2026-11-14 · **The pantry stays current through receipts and the cook's own words, not by detecting removal (brief 017).**
+- **Why:** a camera can show an item is there but not that it's gone. Miss counting, expiry
+  clocks and removal on cooking were each considered and dropped
+  (`docs/product/case-studies/pantry-removal.md`).
+- **Receipts:** a photo of a grocery receipt updates the pantry. **Exception to PAN-04 and "No
+  silent state changes", on the same terms as #28:** lines that are food, match the ingredient
+  dictionary and are high confidence are saved without a per-item tap. They carry source
+  `receipt`, show a "From receipt" chip and can be undone as a whole receipt. Unread lines are
+  skipped, never guessed.
+- **Key ingredient:** each recipe has one key ingredient, derived at fit time (named in the
+  title, else the first protein, else the largest by weight). It is not stored on the recipe. A
+  recipe is "can make" only when its key ingredient is available and seen within 14 days (#11).
+  The recipe screen opens with a card to confirm or discard it.
+- **Removal by the cook's words:** a spoken or typed "I don't have X" during cooking counts as
+  the explicit confirmation PAN-04 and PAN-06 require. It removes the pantry item. A swap still
+  needs approval (SUB-03).
+- **Grocery list:** pulled forward from PRD §4.2 (P1). In-app list only; no Apple Reminders
+  write-back (#2) and no store accounts.
+- **Unchanged:** no automatic pantry decrement (#4), no freshness or expiry judgements, receipt
+  photos are never stored, and receipt reading stays inside the $0.25 per person daily cap (#19).
+*Lives in:* `docs/product/briefs/017-pantry-stays-current.md`.
+
+#30 · 2026-11-14 · **Ingredients get brand icons, drawn like the persimmon mark (brief 018).**
+- **Why:** the pantry is a list of plain words, hard to scan at 30 items, and doesn't look like
+  Umma. The PM compared four directions (`docs/briefing/umma-pantry-icon-options-2026-11-14.html`)
+  and chose A, "Persimmon flat": flat brand-palette fills, no outlines, real cut-out details.
+  Emoji were rejected as off-brand.
+- **How:** one generator in `docs/brand/tools/` draws about 55 forms in light and dark. Every
+  dictionary entry names its icon, with a fallback per category, then a basket. Pantry items gain
+  an additive `icon` field.
+- **Unchanged:** the icon is decoration only. Names stay the source of truth for matching, fit and
+  safety, and an icon never signals status.
+*Lives in:* `docs/product/briefs/018-ingredient-icons.md`.
+
+#31 · 2026-11-14 · **Recipes get real photos: creator uploads first, Pexels stock photos otherwise, with no "Example photo" label (brief 019).**
+- **Creator photo:** the recipe editor takes a finished-dish photo from the camera or library. It
+  is downscaled and re-encoded as JPEG on the phone, which strips location metadata. It is
+  stored privately, served through signed URLs, and pinned to the published version like step
+  clips.
+- **Stock photo:** a recipe without a creator photo gets the first Pexels result for its title,
+  looked up once after publish or by backfill and stored on the recipe. A creator photo always
+  replaces it. If the lookup finds nothing, the placeholder stays; nothing is guessed. Web image
+  search was ruled out: those photos belong to other sites. AI-generated images were not chosen.
+- **No label (PM call):** stock photos are not marked "Example photo" on cards or the recipe
+  page. The recipe page shows "Photo: {photographer} / Pexels", which Pexels' API terms ask for.
+  The PM accepted that a stock photo may be read as the creator's own dish.
+- **Layout:** card and recipe photos shrink to about 2.4:1. The four tabs use our own header,
+  with the title at the top left, instead of the standard navigation bar.
+- **Unchanged:** no AI-generated recipes as a primary flow (#4); photos are user-initiated
+  (capture invariant); no image moderation beyond type and size for the pilot.
+*Lives in:* `docs/product/briefs/019-recipe-photos.md`.
+
+#32 · 2026-11-14 · **iOS CI runs once per stack, not once per PR.** The PM asked to speed up
+merging during active development.
+- **Rule:** `gh workflow run ios` runs once, on the top branch of a stacked series. When it is
+  green, the stack's iOS PRs merge in order. A lone iOS PR is a stack of one. If main is merged
+  into the stack, the run is repeated on the new top.
+- **Why not skip it:** local iOS builds are off while the Mac is short on RAM, so GitHub CI is
+  the only place iOS code is compiled before main. A broken main blocks every Umma session.
+- **Accepted risk:** a middle commit that doesn't build on its own, while the full stack does,
+  can land in main. The next push fixes it.
+*Lives in:* `CLAUDE.md` (Workflow and identity).
+
+#33 · 2026-11-14 · **Testers sign in with Apple or Google; the dev code leaves the tester flow (brief 010).**
+- **Go:** the PM asked to clear every blocker to an internal and then an external TestFlight
+  build: host the backend and replace the 6-digit code in the server log.
+- **Sign in with Apple** is the first button (App Review guideline 4.8 requires it once any
+  other sign-in is offered). **Sign in with Google** is the second.
+- **Google on iOS without Google's SDK:** the system web sign-in sheet with PKCE, so the public
+  build links no third-party SDK. Revisit if the sheet tests badly.
+- **Separate accounts per provider.** An Apple account and a Google account with the same email
+  are two Umma accounts. Apple can hide the email, so linking by email is unreliable, and
+  merging on an unverified email is an account-takeover risk.
+- **Unchanged:** dev sign-in exists only in dev and test environments and debug builds.
+- **App record:** "Umma Cooks", Apple ID 6834884703, bundle ID `com.umma.ios`, SKU `umma-ios-001`.
+*Lives in:* `docs/product/briefs/010-slice7-release-testflight.md`.
+
+#36 · 2026-11-13 · **Product site domain: `ummacooks.app`, auto-deployed from `main`.** Supersedes
 the free-domain line of #20: `umma.vercel.app` and `umma-site.vercel.app` were already taken.
 - **Domain:** the PM bought `ummacooks.app` on Vercel `hshwang34` ($9.99 first year, then $15/yr).
   `ummacooks.com` was not bought for now. `www` redirects to the bare domain.

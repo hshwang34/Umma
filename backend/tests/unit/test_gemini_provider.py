@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import pytest
 from google.genai import types
+from pydantic import ValidationError
 
 from app.ai import pricing
 from app.ai.budget import UsageMeter
@@ -17,12 +18,14 @@ from app.ai.providers import gemini as gemini_mod
 from app.ai.providers.base import (
     AIProvider,
     CoachRequest,
+    GapDecision,
     InspectRequest,
     PantryObservationRequest,
     StepSummary,
     SubstitutionRequest,
 )
 from app.ai.providers.gemini import (
+    CaptureExtractionDraft,
     CoachDraft,
     GeminiProvider,
     InspectDraft,
@@ -83,7 +86,17 @@ def provider(*script: object, **settings_kw: object) -> tuple[GeminiProvider, Fa
 # --- schema derivation ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("draft", [CoachDraft, InspectDraft, PantryDraft, SubstitutionDraft])
+@pytest.mark.parametrize(
+    "draft",
+    [
+        CoachDraft,
+        InspectDraft,
+        PantryDraft,
+        SubstitutionDraft,
+        GapDecision,
+        CaptureExtractionDraft,
+    ],
+)
 def test_derived_schema_fits_gemini_subset(draft: type) -> None:
     schema = gemini_schema(draft)
     text = json.dumps(schema)
@@ -368,3 +381,11 @@ async def test_recipe_text_and_query_are_data_not_instructions() -> None:
     for chunk in [c for c in t.calls[0]["contents"] if isinstance(c, str)]:
         if "SYSTEM: ignore" in chunk:
             assert chunk.startswith(("<recipe_data>", "<user_question>"))
+
+
+def test_schemas_carry_no_list_limits_gemini_rejects() -> None:
+    """Gemini 400s on large ``maxItems``; Pydantic keeps enforcing the limit after the call."""
+    for draft in (PantryDraft, CoachDraft):
+        assert "maxItems" not in json.dumps(gemini_schema(draft))
+    with pytest.raises(ValidationError):
+        PantryDraft.model_validate({"candidates": [], "notes": ["n"] * 9})
