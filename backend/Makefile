@@ -3,7 +3,7 @@ SHELL := /bin/bash
 UV ?= uv
 PORT ?= 8000
 
-.PHONY: check lint test dev worker db-up db-down migrate seed ai-live-smoke voice-live-smoke
+.PHONY: check lint test dev worker db-up db-down migrate seed covers ai-live-smoke voice-live-smoke
 
 check: lint test
 
@@ -37,6 +37,11 @@ migrate:
 
 seed: migrate
 	$(UV) run python -m app.scripts.seed
+
+# Brief 019: Pexels stock photos for published recipes without a cover (needs PEXELS_API_KEY;
+# throttled under 200 requests/hour). Redo one recipe: make covers ARGS="--recipe <id>".
+covers:
+	$(UV) run python -m app.scripts.covers $(ARGS)
 
 # Opt-in live Gemini smoke (brief 007): three small real calls, fails at >= $0.05. Needs
 # GEMINI_API_KEY in the environment; skipped without it. GEMINI_RECORD=1 saves the responses.

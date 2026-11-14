@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Request, Response, status
 
 from app.core.errors import NotFound
 from app.core.security import CurrentUser, SettingsDep
@@ -16,7 +16,7 @@ from app.db.engine import DbSession
 from app.domains.extraction import jobs
 from app.domains.media import covers
 from app.domains.media.service import media_id_or_404
-from app.domains.recipes import drafts
+from app.domains.recipes import drafts, stock_photos
 from app.domains.recipes.draft_schemas import Draft, DraftList, DraftPatch, PublishResult
 
 router = APIRouter(prefix="/recipes/drafts", tags=["drafts"])
@@ -65,11 +65,25 @@ async def delete_draft(draft_id: str, session: DbSession, user: CurrentUser) -> 
     "/{draft_id}/publish", response_model=PublishResult, status_code=status.HTTP_201_CREATED
 )
 async def publish_draft(
-    draft_id: str, session: DbSession, user: CurrentUser, settings: SettingsDep
+    draft_id: str,
+    request: Request,
+    background: BackgroundTasks,
+    session: DbSession,
+    user: CurrentUser,
+    settings: SettingsDep,
 ) -> PublishResult:
-    return await drafts.publish(
+    result = await drafts.publish(
         session, user, _draft_id(draft_id), share_url_base=settings.share_url_base
     )
+    client = request.app.state.stock_photos
+    if result.version_number == 1 and client is not None:
+        # Brief 019: look up a stock photo after the publish is committed and the response
+        # sent. Best effort; it skips recipes with a creator photo and never raises.
+        await session.commit()
+        background.add_task(
+            stock_photos.fill_recipe, request.app.state.sessionmaker, client, result.recipe_id
+        )
+    return result
 
 
 @router.post(
