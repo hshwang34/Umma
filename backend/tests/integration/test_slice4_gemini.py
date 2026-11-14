@@ -285,7 +285,7 @@ async def test_reservations_are_atomic_under_concurrency(
     )
     assert sum(isinstance(r, Reservation) for r in results) == 8  # 8 x 0.06 <= 0.50 < 9 x 0.06
     assert all(r.reason == "user_daily_cap" for r in results if isinstance(r, Denial))
-    assert len(await ledger(db_session)) == 4
+    assert len(await ledger(db_session)) == 8
 
 
 async def test_month_hard_stop_is_atomic_across_users(
