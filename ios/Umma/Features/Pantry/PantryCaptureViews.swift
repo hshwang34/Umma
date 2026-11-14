@@ -189,11 +189,11 @@ struct ScanCaptureView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.section) {
                 VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Text("Scan a shelf or the fridge")
+                    Text(model.copy.title)
                         .font(SLFont.title2)
                         .foregroundStyle(SLColor.textPrimary)
                         .accessibilityAddTraits(.isHeader)
-                    Text("The camera turns on only when you tap it and stops right after the photo. The photo is analysed once and not kept. You’ll review every item before anything is added.")
+                    Text(model.copy.explainer)
                         .font(SLFont.callout)
                         .foregroundStyle(SLColor.textSecondary)
                 }
@@ -209,7 +209,7 @@ struct ScanCaptureView: View {
             }
             .padding(Spacing.screen)
         }
-        .navigationTitle("Scan")
+        .navigationTitle(model.copy.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
@@ -301,7 +301,7 @@ struct ScanCaptureView: View {
                     if model.isSubmitting {
                         ProgressView().tint(SLColor.onBrand).frame(maxWidth: .infinity)
                     } else {
-                        Text("Find items")
+                        Text(model.copy.submitTitle)
                     }
                 }
                 .buttonStyle(SLButtonStyle(prominent: true))

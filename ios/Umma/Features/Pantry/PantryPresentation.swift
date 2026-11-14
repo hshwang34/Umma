@@ -69,6 +69,7 @@ enum DuplicateChoice: String, Sendable, Hashable, CaseIterable {
 enum PantryScanOption: String, Identifiable, Equatable, CaseIterable {
     case liveScan
     case photo
+    case receipt
 
     var id: String { rawValue }
 
@@ -76,6 +77,7 @@ enum PantryScanOption: String, Identifiable, Equatable, CaseIterable {
         switch self {
         case .liveScan: return "Live scan"
         case .photo: return "One photo"
+        case .receipt: return "Grocery receipt"
         }
     }
 
@@ -83,6 +85,7 @@ enum PantryScanOption: String, Identifiable, Equatable, CaseIterable {
         switch self {
         case .liveScan: return "video"
         case .photo: return "camera"
+        case .receipt: return "scroll"
         }
     }
 
@@ -90,11 +93,12 @@ enum PantryScanOption: String, Identifiable, Equatable, CaseIterable {
         switch self {
         case .liveScan: return "Pan the camera across your kitchen; you check the list at the end"
         case .photo: return "Take or choose one photo; you review every item before it’s added"
+        case .receipt: return "Photograph a receipt; food Umma is sure about is added, and you can undo it"
         }
     }
 
-    static func options(liveScan: Bool) -> [PantryScanOption] {
-        liveScan ? [.liveScan, .photo] : [.photo]
+    static func options(liveScan: Bool, receipt: Bool = false) -> [PantryScanOption] {
+        (liveScan ? [.liveScan] : []) + [.photo] + (receipt ? [.receipt] : [])
     }
 }
 
