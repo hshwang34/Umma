@@ -24,6 +24,7 @@ from pydantic import (
 from app.ai.notice import AINotice, notice_field
 from app.domains.recipes.draft_schemas import check_text
 from app.domains.recipes.schemas import RecipeDetail
+from app.domains.sessions.missing import MissingIngredientOut
 from app.domains.sessions.oracle import CommandType
 
 MAX_TIMER_SECONDS = 24 * 3600
@@ -256,6 +257,8 @@ class AskOut(BaseModel):
     proposed_action: ProposedActionOut | None
     requires_confirmation: bool
     ai_notice: AINotice | None = notice_field()  # brief 007; omitted unless set
+    # Brief 017: the "I don't have that" offer. A proposal only; omitted unless set.
+    missing_ingredient: MissingIngredientOut | None = notice_field()
 
 
 VISUAL_LABEL = "Visual estimate — not verified"
