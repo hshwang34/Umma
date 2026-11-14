@@ -3,7 +3,7 @@ SHELL := /bin/bash
 UV ?= uv
 PORT ?= 8000
 
-.PHONY: check lint test dev worker db-up db-down migrate seed ai-live-smoke
+.PHONY: check lint test dev worker db-up db-down migrate seed ai-live-smoke voice-live-smoke
 
 check: lint test
 
@@ -43,3 +43,11 @@ seed: migrate
 ai-live-smoke:
 	@test -n "$$GEMINI_API_KEY" || echo "GEMINI_API_KEY is not set: the live smoke will be skipped"
 	UMMA_LIVE_SMOKE=1 $(UV) run --locked pytest tests/live -q -s -p no:cacheprovider
+
+# Opt-in live paid-voice smoke (brief 012 PR 2): one short ElevenLabs sentence, then <= 3 s of
+# it through Deepgram (well under $0.01). Needs UMMA_VOICE_LIVE=1 plus DEEPGRAM_API_KEY,
+# ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID in the environment; skipped otherwise. It turns
+# PAID_VOICE_ENABLED on for its own run only (the server default stays off, DECISIONS #26).
+voice-live-smoke:
+	@test "$$UMMA_VOICE_LIVE" = "1" || echo "UMMA_VOICE_LIVE is not 1: the voice live smoke will be skipped"
+	PAID_VOICE_ENABLED=true $(UV) run --locked pytest tests/live/test_voice_live.py -q -s -p no:cacheprovider

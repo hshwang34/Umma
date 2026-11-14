@@ -82,10 +82,15 @@ class FakeTTS:
         self.reject_status = reject_status
         self.chunks = chunks
         self.texts: list[str] = []
+        #: Streams the vendor side closed (finished or cut off).
+        self.closed = 0
 
     async def stream(self, text: str) -> AsyncIterator[bytes]:
         self.texts.append(text)
         if self.reject_status is not None:
             raise TTSRejected(self.reject_status)
-        for _ in range(self.chunks):
-            yield b"\x00\x01" * 480  # 20 ms of 24 kHz s16le
+        try:
+            for _ in range(self.chunks):
+                yield b"\x00\x01" * 480  # 20 ms of 24 kHz s16le
+        finally:
+            self.closed += 1
