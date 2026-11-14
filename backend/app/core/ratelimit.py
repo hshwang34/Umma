@@ -13,9 +13,17 @@ Four budgets, each per minute, each from settings (``0`` switches one off, refus
   their whole router) are marked with ``Depends(limit_costly)`` from ``app/core/security.py``;
   ``tests/integration/test_rate_limits.py`` fails when a new write route is not classified.
 
-The table of counters is bounded. When it is full only idle keys are evicted; if every key is
-still active, new keys are refused (fail closed) and existing counters are never reset, so a
-flood from many addresses cannot un-throttle anyone.
+Every table of counters is bounded and nothing is ever cleared wholesale, so a flood from
+many addresses can neither grow memory nor un-throttle anyone. A full table first evicts idle
+keys. If every key is still active:
+
+* per-IP limiters (``IpLimiter``) degrade instead of locking new callers out: the new caller
+  is counted in a coarser bucket (IPv4 /24, IPv6 /48) in a second, smaller table, and if that
+  is full too, in one shared overflow bucket. Only the flooding prefix is throttled.
+* per-user limiters refuse the new key (keys there are signed-in accounts, not addresses).
+
+IPv6 callers are also capped per /48 on every request, so one allocation cannot fill the
+table with distinct /64s.
 
 Over a budget the answer is the standard envelope: 429 ``RATE_LIMITED``, ``retryable: true``.
 """
@@ -36,8 +44,13 @@ from app.core.config import Settings
 from app.core.errors import RateLimited
 
 WINDOW_SECONDS = 60.0
-# The most keys one limiter tracks. Full: idle keys are evicted, else new keys are refused.
+# The most keys one limiter tracks. Full: idle keys are evicted first (see the module docs).
 MAX_KEYS = 20_000
+# IpLimiter's second table of coarse buckets (IPv4 /24, IPv6 /48), and how many times the
+# per-address limit a coarse bucket, or the shared overflow bucket, may carry per minute.
+COARSE_MAX_KEYS = 4_000
+COARSE_FACTOR = 8
+OVERFLOW_KEY = "overflow"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 UNLIMITED_PATHS = frozenset({"/v1/health"})  # Fly's health check must never be throttled
 
@@ -61,6 +74,12 @@ class WindowLimiter:
         self._hits: dict[Hashable, deque[float]] = {}
 
     def allow(self, key: Hashable) -> bool:
+        """A full table of active keys refuses a new key (fail closed)."""
+        return self.try_allow(key) is True
+
+    def try_allow(self, key: Hashable) -> bool | None:
+        """``True`` allowed, ``False`` over the limit, ``None`` when the key is new and the
+        table is full of active keys (the caller decides what a full table means)."""
         if self.limit <= 0:
             return True
         now = self._clock()
@@ -69,9 +88,8 @@ class WindowLimiter:
             if len(self._hits) >= self._max_keys:
                 self._evict_idle(now)
                 if len(self._hits) >= self._max_keys:
-                    # Every tracked key is active. Refuse the new one rather than forget
-                    # anybody's count: clearing here would let a flood lift every limit.
-                    return False
+                    # Never forget anybody's count: clearing would let a flood lift limits.
+                    return None
             hits = self._hits[key] = deque()
         while hits and now - hits[0] >= WINDOW_SECONDS:
             hits.popleft()
@@ -87,18 +105,68 @@ class WindowLimiter:
             del self._hits[key]
 
 
+def _coarse(key: str) -> str:
+    """The wider bucket for an address key from ``_bucket``: IPv4 /24, IPv6 /48."""
+    try:
+        if "/" in key:
+            return str(ipaddress.ip_network(key).supernet(new_prefix=48))
+        return str(ipaddress.ip_network(f"{key}/24", strict=False))
+    except ValueError:
+        return key  # not an address (an unknown socket peer): its own coarse bucket
+
+
+class IpLimiter:
+    """Per-address limit that degrades, instead of locking out, when its table is full.
+
+    * ``fine``: one bucket per caller (IPv4 address or IPv6 /64), ``limit`` per minute.
+    * ``coarse``: one bucket per IPv4 /24 or IPv6 /48, ``limit * COARSE_FACTOR`` per minute,
+      in a smaller table. Every IPv6 request is counted here too (a cap per allocation), and
+      so is any new caller that arrives while ``fine`` is full of active keys.
+    * ``overflow``: a single shared bucket, used only when ``coarse`` is full as well.
+
+    Existing counters are never dropped while active, so a throttled caller stays throttled."""
+
+    def __init__(
+        self,
+        limit: int,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        max_keys: int = MAX_KEYS,
+        coarse_max_keys: int = COARSE_MAX_KEYS,
+    ) -> None:
+        self.limit = limit
+        wide = limit * COARSE_FACTOR
+        self.fine = WindowLimiter(limit, clock=clock, max_keys=max_keys)
+        self.coarse = WindowLimiter(wide, clock=clock, max_keys=coarse_max_keys)
+        self.overflow = WindowLimiter(wide, clock=clock, max_keys=1)
+
+    def allow(self, key: str) -> bool:
+        if self.limit <= 0:
+            return True
+        tracked = self.fine.try_allow(key)
+        if tracked is False:
+            return False
+        if tracked is True and "/" not in key:
+            return True  # IPv4 (or an unknown peer) with its own bucket
+        # IPv6: the per-/48 cap. Or the fine table is full: the coarse bucket stands in.
+        wide = self.coarse.try_allow(_coarse(key))
+        if wide is None:
+            return self.overflow.allow(OVERFLOW_KEY)
+        return wide
+
+
 @dataclass
 class RateLimits:
-    sign_in_ip: WindowLimiter
-    ip: WindowLimiter
+    sign_in_ip: IpLimiter
+    ip: IpLimiter
     user: WindowLimiter
     costly_user: WindowLimiter
 
     @classmethod
     def from_settings(cls, settings: Settings) -> RateLimits:
         return cls(
-            sign_in_ip=WindowLimiter(settings.rate_limit_sign_in_per_ip_per_minute),
-            ip=WindowLimiter(settings.rate_limit_per_ip_per_minute),
+            sign_in_ip=IpLimiter(settings.rate_limit_sign_in_per_ip_per_minute),
+            ip=IpLimiter(settings.rate_limit_per_ip_per_minute),
             user=WindowLimiter(settings.rate_limit_per_user_per_minute),
             costly_user=WindowLimiter(settings.rate_limit_costly_per_user_per_minute),
         )

@@ -148,10 +148,16 @@ reset on every deploy or restart.
 
 - IPv4 callers are counted per address; IPv6 callers per /64 (one home or phone line).
 - A header value that is not an IP address is ignored and the socket address is used.
-- Each limiter tracks at most 20,000 callers. When full it drops only callers idle for a
-  minute; if all are active it refuses *new* callers (429) until some go idle. It never
-  resets existing counters, so a flood cannot lift anyone's limit. A burst of 429s for new
-  testers together with a traffic spike in `fly logs` is this guard working.
+- IPv6 is also capped per /48 (8x the per-caller limit), so one allocation cannot pose as
+  thousands of callers.
+- Memory is bounded and counters are never reset wholesale. Each per-IP limiter tracks at
+  most 20,000 callers and drops only callers idle for a minute. If it is full of active
+  callers (a flood), a new caller is not refused: they are counted in a wider bucket (IPv4
+  /24, IPv6 /48; 4,000 of those, 8x the per-caller limit each), and beyond that in one shared
+  overflow bucket. So during a flood the flooding networks get throttled, callers already
+  throttled stay throttled, and testers elsewhere are still served. In the very worst case
+  (a flood from more than 4,000 networks at once) new testers share the overflow bucket and
+  may see 429s until it eases; `fly logs` will show the spike.
 - "Costly" writes (AI, voice, receipts, live scan, capture, media upload and uploaded
   callbacks, publish, clip trim) are marked in code with `Depends(limit_costly)`; a test fails
   when a new write route is not classified.

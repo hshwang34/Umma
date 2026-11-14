@@ -9,7 +9,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
-from app.core.ratelimit import WINDOW_SECONDS, RateLimits, WindowLimiter, _bucket
+from app.core.ratelimit import (
+    COARSE_FACTOR,
+    WINDOW_SECONDS,
+    IpLimiter,
+    RateLimits,
+    WindowLimiter,
+    _bucket,
+    _coarse,
+)
 from app.main import create_app
 from tests.conftest import bearer
 
@@ -84,6 +92,65 @@ def test_a_flood_of_new_keys_never_lifts_an_existing_limit() -> None:
     # Once the flood goes quiet, new callers are served again.
     now[0] = WINDOW_SECONDS + 1
     assert limiter.allow("newcomer")
+
+
+def _sizes(limiter: IpLimiter) -> tuple[int, int, int]:
+    return (len(limiter.fine._hits), len(limiter.coarse._hits), len(limiter.overflow._hits))
+
+
+def test_a_full_ip_table_degrades_to_prefix_buckets_instead_of_locking_out() -> None:
+    now = [0.0]
+    limiter = IpLimiter(2, clock=lambda: now[0], max_keys=50, coarse_max_keys=10)
+    assert limiter.allow("192.0.2.1") and limiter.allow("192.0.2.1")
+    assert not limiter.allow("192.0.2.1")  # the victim is throttled
+    # A flood from one /16: 49 addresses fill the table, the rest land in their /24 buckets.
+    flood = [limiter.allow(f"10.9.{n // 250}.{n % 250 + 1}") for n in range(1000)]
+    assert flood[:49] == [True] * 49
+    assert _sizes(limiter) == (50, 4, 0)
+    # Each flooding /24 got at most its coarse budget, then was throttled.
+    assert sum(flood[49:]) <= 4 * 2 * COARSE_FACTOR
+    assert not limiter.allow("10.9.0.240")  # a new address from the flooding prefix
+    # A new caller from an unrelated prefix is still served while the table is full...
+    assert limiter.allow("198.51.100.20")
+    assert limiter.allow("2001:db8:5::1")
+    # ...and the already-throttled key stays throttled.
+    assert not limiter.allow("192.0.2.1")
+    assert _sizes(limiter) == (50, 6, 0)
+
+
+def test_when_the_prefix_table_is_full_too_one_shared_bucket_takes_over() -> None:
+    now = [0.0]
+    limiter = IpLimiter(1, clock=lambda: now[0], max_keys=5, coarse_max_keys=3)
+    for n in range(5):
+        assert limiter.allow(f"10.0.{n}.1")  # fills the fine table
+    for n in range(3):
+        assert limiter.allow(f"10.1.{n}.1")  # fills the coarse table (three /24s)
+    served = [limiter.allow(f"10.2.{n}.1") for n in range(100)]  # everyone else: overflow
+    assert sum(served) == COARSE_FACTOR
+    assert _sizes(limiter) == (5, 3, 1)  # nothing ever exceeds its cap
+    assert not limiter.allow("10.0.0.1")  # existing keys keep their own counters
+    now[0] = WINDOW_SECONDS + 1
+    assert limiter.allow("203.0.113.1")  # the flood went quiet: a normal bucket again
+    assert _sizes(limiter) == (1, 3, 1)  # idle prefix buckets go when that table needs room
+
+
+def test_ipv6_is_capped_per_48_as_well_as_per_64() -> None:
+    now = [0.0]
+    limiter = IpLimiter(2, clock=lambda: now[0])
+    # One allocation presenting a new /64 for every request.
+    served = [limiter.allow(f"2001:db8:1:{n:x}::/64") for n in range(100)]
+    assert sum(served) == 2 * COARSE_FACTOR
+    assert served[: 2 * COARSE_FACTOR] == [True] * (2 * COARSE_FACTOR)
+    # Another /48 is unaffected, and a single /64 still has its own smaller limit.
+    assert limiter.allow("2001:db8:2:1::/64") and limiter.allow("2001:db8:2:1::/64")
+    assert not limiter.allow("2001:db8:2:1::/64")
+
+
+def test_coarse_buckets() -> None:
+    assert _coarse("203.0.113.77") == "203.0.113.0/24"
+    assert _coarse("2001:db8:1:2::/64") == "2001:db8:1::/48"
+    assert _coarse("peer:unknown") == "peer:unknown"
+    assert all(IpLimiter(0).allow("203.0.113.1") for _ in range(50))  # 0 = off
 
 
 @pytest.mark.parametrize(
@@ -185,8 +252,8 @@ async def test_a_garbage_client_ip_header_is_never_used_as_a_key(settings: Setti
             assert response.status_code == 200
         _assert_limited(await client.get("/v1/recipes", headers={"Fly-Client-IP": "garbage-3"}))
         limits: RateLimits = client._transport.app.state.rate_limits  # type: ignore[attr-defined]
-        assert all("garbage" not in str(key) for key in limits.ip._hits)
-        assert len(limits.ip._hits) == 1  # the socket peer
+        assert all("garbage" not in str(key) for key in limits.ip.fine._hits)
+        assert len(limits.ip.fine._hits) == 1  # the socket peer
 
 
 async def test_health_is_never_limited(settings: Settings) -> None:
