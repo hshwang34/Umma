@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -16,6 +16,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -87,6 +88,7 @@ class PantrySource(enum.StrEnum):
     VOICE = "voice"
     PHOTO = "photo"
     LIVE = "live"  # auto-saved from a live pantry scan (brief 016)
+    RECEIPT = "receipt"  # auto-saved from a grocery receipt photo (brief 017)
 
 
 class StorageLocation(enum.StrEnum):
@@ -683,6 +685,25 @@ class PantryLiveScan(CreatedAtMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+
+
+class PantryReceipt(CreatedAtMixin, Base):
+    """One receipt that changed the pantry (brief 017). The photo is never stored.
+    ``receipt_hash`` is what makes a second photo of the same receipt a no-op; it is NULL unless
+    the receipt printed a date, a store and a total (anything less is too weak to identify).
+    ``result_json`` holds the first answer (replayed on a repeat) and what an undo needs."""
+
+    __tablename__ = "pantry_receipts"
+    __table_args__ = (UniqueConstraint("owner_user_id", "receipt_hash"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    receipt_hash: Mapped[str | None] = mapped_column(String(64))
+    purchased_on: Mapped[date | None] = mapped_column(Date)
+    store: Mapped[str | None] = mapped_column(String(120))
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
 class PantryLiveScanItem(CreatedAtMixin, Base):

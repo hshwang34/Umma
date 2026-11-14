@@ -14,6 +14,7 @@ from app.api.v1 import (
     me,
     media,
     pantry,
+    receipts,
     recipes,
     sessions,
     substitutions,
@@ -29,6 +30,7 @@ router.include_router(drafts.router)  # before recipes: `/recipes/drafts` is not
 router.include_router(recipes.router)
 router.include_router(recipes.versions_router)
 router.include_router(live_scans.router)  # before pantry: `/pantry/live-scans` is not an item
+router.include_router(receipts.router)  # before pantry, like live scans
 router.include_router(pantry.router)
 router.include_router(substitutions.router)
 router.include_router(sessions.router)

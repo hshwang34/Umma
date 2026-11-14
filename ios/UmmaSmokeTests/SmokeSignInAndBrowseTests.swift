@@ -534,10 +534,10 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         return app
     }
 
-    /// Explore's search bar collapses under the large title once the list scrolls; pull it back.
+    /// Explore's in-page search field (brief 019) scrolls with the feed; pull it back into view.
     private func searchExplore(_ app: XCUIApplication, for text: String) {
         app.tabBars.buttons["Explore"].tap()
-        let search = app.searchFields.firstMatch
+        let search = app.textFields["explore.search"]
         if !search.waitForExistence(timeout: 3) { app.swipeDown() }
         XCTAssertTrue(search.waitForExistence(timeout: 5), "Explore search not found")
         type(text, into: search, in: app)
