@@ -392,9 +392,13 @@ struct CookingSession: Codable, Sendable, Hashable, Identifiable {
     let startedAt: Date?
     let endedAt: Date?
     let updatedAt: Date
+    /// Brief 017: ingredients that finishing this cook put on the shopping list. Set only in the
+    /// answer to `complete` (and its replay); empty on every other read.
+    let shoppingAdded: [String]
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        shoppingAdded = try c.decodeIfPresent([String].self, forKey: .shoppingAdded) ?? []
         id = try c.decode(UUID.self, forKey: .id)
         recipeVersionId = try c.decode(UUID.self, forKey: .recipeVersionId)
         recipeId = try c.decode(UUID.self, forKey: .recipeId)
