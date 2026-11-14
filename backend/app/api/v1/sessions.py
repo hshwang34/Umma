@@ -7,13 +7,13 @@ import uuid
 from typing import Annotated, Literal
 
 import pydantic
-from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.ai.guard import notice_of, provider_for
 from app.core.errors import NotFound, UnsupportedMediaType, ValidationError
-from app.core.security import CurrentUser, SettingsDep
+from app.core.security import CurrentUser, SettingsDep, limit_costly
 from app.db.engine import DbSession
 from app.domains.pantry import upload
 from app.domains.sessions import ask as ask_service
@@ -96,7 +96,7 @@ async def run_command(
     return JSONResponse(content=payload)
 
 
-@router.post("/{session_id}/ask", response_model=AskOut)
+@router.post("/{session_id}/ask", response_model=AskOut, dependencies=[Depends(limit_costly)])
 async def ask(
     session_id: str, body: AskIn, request: Request, session: DbSession, user: CurrentUser
 ) -> AskOut:
@@ -138,7 +138,12 @@ def _revision_field(value: str | None) -> int | None:
     return int(value)
 
 
-@router.post("/{session_id}/inspect", response_model=InspectOut, openapi_extra=_INSPECT_BODY)
+@router.post(
+    "/{session_id}/inspect",
+    response_model=InspectOut,
+    openapi_extra=_INSPECT_BODY,
+    dependencies=[Depends(limit_costly)],
+)
 async def inspect(
     session_id: str, request: Request, session: DbSession, user: CurrentUser
 ) -> InspectOut:

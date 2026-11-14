@@ -8,13 +8,13 @@ import uuid
 from datetime import UTC, datetime
 
 import pydantic
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 
 from app.ai.guard import notice_of, provider_for
 from app.ai.providers.base import PantryObservationRequest
 from app.core.errors import NotFound, UnsupportedMediaType, ValidationError
-from app.core.security import CurrentUser, SettingsDep
+from app.core.security import CurrentUser, SettingsDep, limit_costly
 from app.db.engine import DbSession
 from app.domains.matching.dictionary import load_dictionary
 from app.domains.pantry import observations, service, upload
@@ -127,6 +127,7 @@ async def _multipart_request(
 
 @router.post(
     "/observations",
+    dependencies=[Depends(limit_costly)],
     response_model=ObservationOut,
     status_code=status.HTTP_201_CREATED,
     openapi_extra=_OBSERVATION_BODY,

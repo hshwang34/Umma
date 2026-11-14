@@ -8,6 +8,8 @@ Fail-closed rules (enforced by the validator below, the process refuses to start
 * ``AUTH_MODE`` is required (no default). ``dev`` is only allowed when ``ENVIRONMENT`` is ``dev``
   or ``test``. **Production deploys must set ``ENVIRONMENT=prod`` and ``AUTH_MODE=apple``.**
   ``ENVIRONMENT`` defaults to ``dev`` because an unset value means a local checkout.
+* ``ENVIRONMENT=prod`` also needs the four AI cost-guard caps stated explicitly and above zero,
+  every request rate limit on, and ``CLIENT_IP_HEADER`` set (brief 010).
 * ``DEV_LOGIN_ECHO_CODE`` (returns the sign-in code in the API response) is only allowed when
   ``ENVIRONMENT=test``; it exists so integration tests can drive the two-step dev login.
 """
@@ -29,6 +31,18 @@ MIN_JWT_SECRET_BYTES = 32
 # Matches the MinIO container in backend/docker-compose.yml; refused in prod.
 DEV_STORAGE_ACCESS_KEY = "umma-dev"
 DEV_STORAGE_SECRET_KEY = "umma-dev-secret"
+PROD_REQUIRED_CAPS = (
+    "ai_user_daily_cap_usd",
+    "ai_user_daily_live_cap_usd",
+    "ai_month_soft_cap_usd",
+    "ai_month_hard_cap_usd",
+)
+PROD_REQUIRED_RATE_LIMITS = (
+    "rate_limit_sign_in_per_ip_per_minute",
+    "rate_limit_per_ip_per_minute",
+    "rate_limit_per_user_per_minute",
+    "rate_limit_costly_per_user_per_minute",
+)
 
 
 class Settings(BaseSettings):
@@ -64,6 +78,15 @@ class Settings(BaseSettings):
     dev_login_cooldown_seconds: int = 30
     dev_login_lockout_window_minutes: int = 15
     dev_login_max_failures_per_window: int = 10
+    # Request rate limits (brief 010), per minute, counted in the web process
+    # (app/core/ratelimit.py). 0 switches a limit off, which is refused in prod.
+    rate_limit_sign_in_per_ip_per_minute: int = Field(default=10, ge=0)
+    rate_limit_per_ip_per_minute: int = Field(default=600, ge=0)
+    rate_limit_per_user_per_minute: int = Field(default=300, ge=0)
+    rate_limit_costly_per_user_per_minute: int = Field(default=60, ge=0)
+    # The header the hosting proxy sets to the caller's address (Fly: ``Fly-Client-IP``).
+    # Unset means the peer address is used, which is only right without a proxy in front.
+    client_ip_header: str | None = None
     ai_provider: Literal["mock", "gemini"] = "mock"
     # Brief 012 tier plumbing (DECISIONS #22): every account gets this entitlement until
     # purchases exist. The beta runs everyone on ``paid``; there is no per-user column yet.
@@ -230,7 +253,24 @@ class Settings(BaseSettings):
             "https://"
         ):
             raise ValueError("STORAGE_ENDPOINT_URL must be https:// in prod")
+        if self.environment == "prod":
+            self._refuse_unguarded_production()
         return self
+
+    def _refuse_unguarded_production(self) -> None:
+        """Brief 010: production must state its spend caps and keep every rate limit on."""
+        for name in PROD_REQUIRED_CAPS:
+            # A default is not enough: the deploy config has to state each cap (fly.toml [env]).
+            if name not in self.model_fields_set or getattr(self, name) <= 0:
+                raise ValueError(f"{name.upper()} must be set above 0 in prod (AI cost guard)")
+        for name in PROD_REQUIRED_RATE_LIMITS:
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name.upper()} must be above 0 in prod")
+        if not self.client_ip_header:
+            raise ValueError(
+                "CLIENT_IP_HEADER must be set in prod (Fly: Fly-Client-IP); without it every "
+                "caller shares the proxy's address and one per-IP rate limit"
+            )
 
     @property
     def voice_stt_configured(self) -> bool:
