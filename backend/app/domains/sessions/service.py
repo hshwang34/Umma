@@ -41,6 +41,7 @@ from app.db.models import (
     SessionEvent,
     SessionNote,
     SessionStatus,
+    ShoppingReason,
     SubstitutionSuggestionRecord,
     Timer,
     TimerStatus,
@@ -69,6 +70,7 @@ from app.domains.sessions.schemas import (
     SuggestedTimer,
     TimerOut,
 )
+from app.domains.shopping import service as shopping
 from app.domains.substitutions import policy
 from app.domains.substitutions.adapt import AdaptationSpec, compose_overlay, suggested_timer
 from app.domains.substitutions.rules import load_rules
@@ -656,6 +658,10 @@ async def run_command(
     row.updated_at = now
     await session.flush()
     response = await latest()
+    if body.command == oracle.CommandType.COMPLETE:
+        # Stored with the event below, so a replayed completion reports the same names and
+        # adds nothing; every later read of the session answers with an empty list.
+        response["shopping_added"] = await _shop_for_missing(session, user, row, ctx, now)
     session.add(
         SessionEvent(
             session_id=row.id,
@@ -681,6 +687,27 @@ async def run_command(
         .values(response_json=None)
     )
     return response
+
+
+async def _shop_for_missing(
+    session: AsyncSession, user: User, row: CookingSession, ctx: VersionContext, now: datetime
+) -> list[str]:
+    """Finish hook (brief 017): what was missing when the session started and got no swap goes
+    on the shopping list. Returns the names this call added (already-listed ones are left out).
+    Never touches the pantry or the session's state."""
+    swapped = {a.ingredient_ref for a in await active_adaptations(session, row.id)}
+    names = shopping.missing_at_start(
+        ctx.ingredients, row.pantry_snapshot_json, swapped, await load_dictionary(session), now
+    )
+    added = await shopping.add_missing(
+        session,
+        user,
+        names,
+        ShoppingReason.MISSING,
+        session_id=row.id,
+        recipe_version_id=row.recipe_version_id,
+    )
+    return [item.raw_label for item in added]
 
 
 async def _side_effect(

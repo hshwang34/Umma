@@ -9,6 +9,8 @@
   ``last_confirmed_at`` is refreshed and the amount changes only under ``merged_quantity``;
   everything else on the item, its source included, stays as it was.
 * A demo draft (mock provider) saves nothing and records nothing.
+* Open shopping-list items with the name of a saved or rebought ingredient are ticked off
+  (``checked_by = receipt``). A demo and a repeat tick nothing.
 * ``pantry_receipts`` stores a hash of the receipt's date, store and total and the first answer;
   a second photo of the same receipt replays that answer with ``duplicate`` set and changes
   nothing, even when its lines were read differently. A read that saved nothing is not
@@ -43,6 +45,7 @@ from app.domains.pantry.schemas import (
     ReceiptSkipped,
     ReceiptWouldAdd,
 )
+from app.domains.shopping import service as shopping
 
 
 @dataclass
@@ -180,7 +183,7 @@ async def save_receipt(
         )
         if seen is not None:
             replay = ReceiptResult.model_validate(seen.result_json["response"])
-            return replay.model_copy(update={"duplicate": True})
+            return replay.model_copy(update={"duplicate": True, "shopping_checked": []})
 
     existing: dict[str, PantryItem] = {}
     rows = await session.scalars(
@@ -236,6 +239,11 @@ async def save_receipt(
         # read was too blurry must be read afresh, not answered with the empty first result.
         return result
 
+    # The receipt closes the loop: what it brought home comes off the shopping list.
+    bought = [item.normalized_name for item in (*result.added, *result.merged)]
+    ticked = await shopping.check_bought(session, user, bought, now)
+    result.shopping_checked = [item.raw_label for item in ticked]
+
     receipt = PantryReceipt(
         owner_user_id=user.id,
         receipt_hash=digest,
@@ -249,7 +257,11 @@ async def save_receipt(
     receipt.result_json = {
         "response": result.model_dump(mode="json"),
         # What a whole-receipt undo needs (the endpoint is a later PR).
-        "undo": {"created": [str(i.id) for i in result.added], "merged": undo_merged},
+        "undo": {
+            "created": [str(i.id) for i in result.added],
+            "merged": undo_merged,
+            "shopping_checked": [str(item.id) for item in ticked],
+        },
     }
     await session.flush()
     return result
