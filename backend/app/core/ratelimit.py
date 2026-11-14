@@ -178,7 +178,7 @@ class RateLimits:
     ip: IpLimiter
     user: WindowLimiter
     costly_user: WindowLimiter
-    # Review login (brief 010 PR 3): attempts per IP, and across every caller together.
+    # Review login (brief 010 PR 3): attempts per IP, and wrong codes across every caller.
     review_ip: IpLimiter
     review_total: WindowLimiter
 
@@ -258,9 +258,14 @@ def check_costly(request: Request, user_id: uuid.UUID) -> None:
         raise RateLimited(TOO_MANY_REQUESTS)
 
 
-def check_review_login(request: Request) -> None:
-    """Every review-login attempt, right or wrong, spends the caller's and the global budget,
-    so the code cannot be guessed at speed from one address or from many."""
-    limits = _limits(request)
-    if not limits.review_ip.allow(client_ip(request)) or not limits.review_total.allow("all"):
+def check_review_attempt(request: Request) -> None:
+    """Every review-login attempt, right or wrong, spends the caller's own per-IP budget."""
+    if not _limits(request).review_ip.allow(client_ip(request)):
+        raise RateLimited(TOO_MANY_SIGN_INS)
+
+
+def charge_review_failure(request: Request) -> None:
+    """Only a WRONG code spends the budget shared by all callers. A flood of wrong codes
+    therefore gets 429s itself but can never lock the reviewer (who has the right code) out."""
+    if not _limits(request).review_total.allow("all"):
         raise RateLimited(TOO_MANY_SIGN_INS)

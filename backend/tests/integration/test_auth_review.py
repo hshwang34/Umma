@@ -125,20 +125,39 @@ async def test_attempts_are_limited_per_ip(settings: Settings) -> None:
         assert (await client.post(REVIEW, json={"code": CODE}, headers=reviewer)).status_code == 200
 
 
-async def test_attempts_are_limited_across_all_addresses(settings: Settings) -> None:
+async def test_a_flood_of_wrong_codes_cannot_lock_the_reviewer_out(settings: Settings) -> None:
     async with _client(
         settings, rate_limit_review_login_total_per_minute=4, client_ip_header="Fly-Client-IP"
     ) as client:
-        for n in range(4):
-            headers = {"Fly-Client-IP": f"203.0.113.{n}"}
-            assert (
-                await client.post(REVIEW, json={"code": "x"}, headers=headers)
-            ).status_code == 401
-        fresh = {"Fly-Client-IP": "203.0.113.200"}
-        assert (await client.post(REVIEW, json={"code": CODE}, headers=fresh)).status_code == 429
+
+        async def attempt(code: str, host: int) -> int:
+            headers = {"Fly-Client-IP": f"203.0.{host}.9"}  # a different /24 every time
+            return (await client.post(REVIEW, json={"code": code}, headers=headers)).status_code
+
+        # Wrong codes from many addresses use up the shared budget, then get 429 themselves.
+        assert [await attempt("guess", host) for host in range(4)] == [401] * 4
+        assert [await attempt("guess", host) for host in range(4, 30)] == [429] * 26
+        # The right code from a fresh address still signs in, again and again.
+        assert await attempt(CODE, 100) == 200
+        assert await attempt(CODE, 101) == 200
+        # Right codes never spent the shared budget, and wrong ones are still refused.
+        assert await attempt("guess", 102) == 429
         # Other sign-in routes are not affected by the review budget.
         dev = await client.post("/v1/auth/dev-login", json={"email": "a@example.com"})
         assert dev.status_code == 202
+
+
+async def test_the_reviewer_is_still_limited_on_their_own_address(settings: Settings) -> None:
+    async with _client(
+        settings, rate_limit_review_login_per_ip_per_minute=2, client_ip_header="Fly-Client-IP"
+    ) as client:
+        headers = {"Fly-Client-IP": "198.51.100.4"}
+        for _ in range(2):
+            assert (
+                await client.post(REVIEW, json={"code": CODE}, headers=headers)
+            ).status_code == 200
+        limited = await client.post(REVIEW, json={"code": CODE}, headers=headers)
+        assert limited.status_code == 429
 
 
 async def test_the_review_account_only_sees_its_own_data(settings: Settings) -> None:

@@ -8,9 +8,11 @@ one extra way in: ``POST /v1/auth/review`` with a secret code from ``REVIEW_LOGI
 * Every caller signs in as the same single account (``review`` / ``app-review``). It is an
   ordinary user: it owns only what it creates and sees other people's data exactly as any
   other account does, which is not at all.
-* Attempts are limited per IP and across all callers (``app/core/ratelimit.py``), on top of
-  the sign-in limit, so the code cannot be guessed at speed. A wrong code and a rate limit
-  are the only two failures, and neither says anything about the code.
+* Every attempt spends the caller's per-IP budget, on top of the sign-in limit. Wrong codes
+  also spend one budget shared by all callers; the right code never does, so a flood of
+  guesses cannot lock the reviewer out. What really protects the code is its length (20+
+  random characters); the limits only slow guessing down. A wrong code and a rate limit are
+  the only two failures, and neither says anything about the code.
 """
 
 from __future__ import annotations
@@ -57,8 +59,9 @@ async def review_login(
     if settings.review_login_code is None:
         # Backstop: the router is only mounted when the secret is set (see create_app).
         raise NotFound("Not found")
-    ratelimit.check_review_login(request)
+    ratelimit.check_review_attempt(request)
     if not _matches(payload.code, settings.review_login_code.get_secret_value()):
+        ratelimit.charge_review_failure(request)  # 429 once wrong codes run over the budget
         raise Unauthorized(INVALID_MESSAGE)
     user = await users_service.get_or_create_by_subject(
         session,
