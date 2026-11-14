@@ -106,4 +106,17 @@ final class LiveScanBasketAPITests: XCTestCase {
         XCTAssertThrowsError(try JSONCoding.makeDecoder().decode(LiveScanToken.self, from: Data(missing.utf8)),
                              "a real token without a token is not usable")
     }
+
+    func testRemoveRefusesKeysThatAreNotOnePathSegment() async {
+        StubURLProtocol.install { request in (.stub(request, status: 204), Data()) }
+        let before = StubURLProtocol.requests.count
+        for key in ["a/b", "..", ".", "", "x?y", "x#y", "x%2Fy", "a\\b", "a\nb"] {
+            do {
+                try await makeClient().removeLiveScanItem(scanID: LiveScanBasketFixtures.scanID, key: key)
+                XCTFail("\(key.debugDescription) must be refused")
+            } catch {}
+        }
+        XCTAssertEqual(StubURLProtocol.requests.count, before, "no request leaves the phone")
+        XCTAssertTrue(APIClient.isSinglePathSegment("soy sauce"))
+    }
 }
