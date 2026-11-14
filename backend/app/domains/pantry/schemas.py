@@ -296,7 +296,7 @@ class ReceiptWouldAdd(BaseModel):
 
 
 class ReceiptResult(BaseModel):
-    receipt_id: uuid.UUID | None  # null for a demo read: nothing was recorded
+    receipt_id: uuid.UUID | None  # null when nothing was saved (demo included)
     duplicate: bool = False
     demo: bool = False
     purchased_on: date | None

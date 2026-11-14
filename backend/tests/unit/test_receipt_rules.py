@@ -31,6 +31,11 @@ def test_hash_is_date_store_and_total_only() -> None:
     assert receipt_hash(a) == receipt_hash(b) and len(receipt_hash(a) or "") == 64
 
 
+def test_hash_compares_the_store_by_letters_and_digits() -> None:
+    a, b = draft(store="TRADER JOE'S #552"), draft(store="Trader Joes 552")
+    assert receipt_hash(a) == receipt_hash(b) != receipt_hash(draft(store="Trader Joes 553"))
+
+
 @pytest.mark.parametrize(
     "change",
     [{"purchased_on": "2026-11-13"}, {"store": "Other"}, {"total": "12.51"}],
@@ -40,11 +45,11 @@ def test_hash_changes_with_date_store_or_total(change: dict) -> None:
 
 
 @pytest.mark.parametrize(
-    "missing", [{"purchased_on": None}, {"total": None}, {"purchased_on": None, "total": None}]
+    "missing",
+    [{"purchased_on": None}, {"total": None}, {"store": None}, {"store": " -- "}],
 )
-def test_hash_needs_both_a_date_and_a_total(missing: dict) -> None:
+def test_hash_needs_a_date_a_store_and_a_total(missing: dict) -> None:
     assert receipt_hash(draft(line("milk"), **missing)) is None
-    assert receipt_hash(draft(line("milk"), store=None)) is not None
 
 
 def bought(count: int = 1, quantity: str | None = None, unit: str | None = None) -> Purchase:
@@ -98,4 +103,27 @@ def test_read_lines_triage_and_combining() -> None:
         ("GV PRM 4X", "unreadable"),
         ("XYLOFRUIT", "unknown_item"),
         ("MLK?", "low_confidence"),
+    ]
+
+
+def test_weight_and_bare_line_of_one_item_combine_to_a_pack_count() -> None:
+    purchases, _ = read_lines(
+        draft(line("chicken", quantity="500", unit="g"), line("chicken", count=2)), D
+    )
+    assert [(p.key, p.count, p.quantity, p.unit) for p in purchases] == [("chicken", 3, None, None)]
+
+
+def test_amount_that_rounds_to_zero_falls_back_to_the_pack_count() -> None:
+    purchases, _ = read_lines(
+        draft(
+            line("butter", quantity="0.0004", unit="kg"),
+            line("milk", count=None, quantity="0.0005", unit="l"),  # rounds half to even: 0
+            line("egg", quantity="0.001", unit="kg"),  # the smallest amount the pantry holds
+        ),
+        D,
+    )
+    assert [(p.key, p.quantity, p.unit, p.amount) for p in purchases] == [
+        ("butter", None, None, Decimal(1)),
+        ("milk", None, None, Decimal(1)),
+        ("egg", Decimal("0.001"), "kg", Decimal("0.001")),
     ]

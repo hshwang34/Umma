@@ -124,18 +124,23 @@ async def test_saves_only_food_dictionary_high_confidence_lines(
     assert stored["undo"] == {"created": [i["id"] for i in body["added"]], "merged": []}
 
 
+KEPT = ("source", "confidence", "quantity_is_estimate", "storage_location", "note")
+
+
 async def test_rebought_items_merge_and_refresh_last_seen(
     app: FastAPI, client: AsyncClient, engine: AsyncEngine
 ) -> None:
     h = await bearer(client, "cook@example.com")
+    photo = {"source": "photo", "confidence": 0.7, "quantity_is_estimate": True}
     await stock(
         client,
         h,
-        {"raw_label": "butter", "quantity": 2, "unit": "kg"},
-        {"raw_label": "milk", "quantity": 1},
+        {"raw_label": "butter", "quantity": 2, "unit": "kg", "storage_location": "fridge"},
+        {"raw_label": "milk", "quantity": 1, "note": "the blue carton", **photo},
         {"raw_label": "chicken thigh", "quantity": 500, "unit": "g"},
         {"raw_label": "soy sauce", "quantity": 1, "unit": "cup"},
         {"raw_label": "garlic"},
+        {"raw_label": "egg", "quantity": 999_999},
     )
     before = await pantry(client, h)
     app.state.ai_provider = StubReader(
@@ -145,31 +150,74 @@ async def test_rebought_items_merge_and_refresh_last_seen(
             food("chicken thigh", "CHKN 1.24 lb", quantity="1.24", unit="lb"),  # other unit
             food("soy sauce", "SOY SAUCE"),  # a count onto a volume
             food("garlic", "GARLIC BULB"),  # no amount on file
+            food("egg", "EGGS x5", count=5),  # would pass the pantry's quantity limit
         )
     )
     body = (await upload(client, h)).json()
     assert body["added"] == []
     assert [i["id"] for i in body["merged"]] == [
-        before[k]["id"] for k in ("butter", "milk", "chicken thigh", "soy sauce", "garlic")
+        before[k]["id"] for k in ("butter", "milk", "chicken thigh", "soy sauce", "garlic", "egg")
     ]
     after = await pantry(client, h)
-    assert {k: (v["quantity"], v["unit"], v["source"]) for k, v in after.items()} == {
-        "butter": (7.0, "kg", "receipt"),
-        "milk": (3.0, None, "receipt"),
-        "chicken thigh": (500.0, "g", "manual"),
-        "soy sauce": (1.0, "cup", "manual"),
-        "garlic": (None, None, "manual"),
+    assert body["merged"] == [after[i["normalized_name"]] for i in body["merged"]]
+    assert {k: (v["quantity"], v["unit"]) for k, v in after.items()} == {
+        "butter": (7.0, "kg"),
+        "milk": (3.0, None),
+        "chicken thigh": (500.0, "g"),
+        "soy sauce": (1.0, "cup"),
+        "garlic": (None, None),
+        "egg": (999_999.0, None),
     }
     for key, item in after.items():
+        # Only the amount and "last seen" move: provenance, place and note stay as they were.
+        assert {f: item[f] for f in KEPT} == {f: before[key][f] for f in KEPT}, key
         seen = datetime.fromisoformat(item["last_confirmed_at"])
         assert seen > datetime.fromisoformat(before[key]["last_confirmed_at"]), key
+    milk = after["milk"]  # an estimate plus an exact amount is still an estimate
+    assert (milk["source"], milk["confidence"], milk["quantity_is_estimate"], milk["note"]) == (
+        "photo",
+        0.7,
+        True,
+        "the blue carton",
+    )
+    assert (after["butter"]["source"], after["butter"]["storage_location"]) == ("manual", "fridge")
     (stored,) = await receipt_rows(engine)
     undo = {m["id"]: m["previous"] for m in stored["undo"]["merged"]}
     was = undo[before["butter"]["id"]]
-    assert (was["quantity"], was["unit"], was["source"]) == ("2", "kg", "manual")
+    assert (was["quantity"], was["unit"]) == ("2", "kg")
     assert datetime.fromisoformat(was["last_confirmed_at"]) == datetime.fromisoformat(
         before["butter"]["last_confirmed_at"]
     )
+
+
+async def test_blurry_first_read_saves_nothing_and_a_retake_is_read_afresh(
+    app: FastAPI, client: AsyncClient, engine: AsyncEngine
+) -> None:
+    h = await bearer(client, "cook@example.com")
+    app.state.ai_provider = StubReader(
+        receipt(food(None, "M?LK", confidence=0.2), food("egg", "EG?S", confidence=0.4))
+    )
+    blurry = (await upload(client, h)).json()
+    assert (blurry["receipt_id"], blurry["duplicate"], blurry["added"]) == (None, False, [])
+    assert [s["reason"] for s in blurry["skipped"]] == ["unreadable", "low_confidence"]
+    assert await receipt_rows(engine) == []
+
+    app.state.ai_provider = StubReader(receipt(food("milk", "MILK"), food("egg", "EGGS")))
+    retake = (await upload(client, h)).json()
+    assert retake["duplicate"] is False and retake["receipt_id"] is not None
+    assert set(await pantry(client, h)) == {"milk", "egg"}
+    assert (await upload(client, h)).json()["duplicate"] is True  # now it is on record
+
+
+async def test_store_spelling_does_not_defeat_the_duplicate_check(
+    app: FastAPI, client: AsyncClient, engine: AsyncEngine
+) -> None:
+    h = await bearer(client, "cook@example.com")
+    app.state.ai_provider = StubReader(receipt(food("milk", "MILK"), store="TRADER JOE'S"))
+    first = (await upload(client, h)).json()
+    app.state.ai_provider = StubReader(receipt(food("milk", "MILK"), store="Trader Joes"))
+    assert (await upload(client, h)).json() == {**first, "duplicate": True}
+    assert len(await receipt_rows(engine)) == 1
 
 
 async def test_same_receipt_twice_changes_nothing(
@@ -216,8 +264,8 @@ async def test_same_store_and_date_with_a_different_total_is_saved(
     assert len(await receipt_rows(engine)) == 2
 
 
-@pytest.mark.parametrize("missing", [{"purchased_on": None}, {"total": None}])
-async def test_receipt_missing_date_or_total_is_never_a_duplicate(
+@pytest.mark.parametrize("missing", [{"purchased_on": None}, {"total": None}, {"store": None}])
+async def test_receipt_missing_date_store_or_total_is_never_a_duplicate(
     app: FastAPI, client: AsyncClient, engine: AsyncEngine, missing: dict
 ) -> None:
     h = await bearer(client, "cook@example.com")

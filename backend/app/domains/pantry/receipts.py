@@ -6,11 +6,13 @@
   never guessed. Non-food lines are dropped.
 * Lines for the same ingredient are combined, then written through ``service.create_items`` with
   the internal source ``receipt``. An ingredient already in the pantry is merged into (rebought):
-  ``last_confirmed_at`` is refreshed and the amount changes only under ``merged_quantity``.
+  ``last_confirmed_at`` is refreshed and the amount changes only under ``merged_quantity``;
+  everything else on the item, its source included, stays as it was.
 * A demo draft (mock provider) saves nothing and records nothing.
 * ``pantry_receipts`` stores a hash of the receipt's date, store and total and the first answer;
   a second photo of the same receipt replays that answer with ``duplicate`` set and changes
-  nothing, even when its lines were read differently.
+  nothing, even when its lines were read differently. A read that saved nothing is not
+  recorded, so a retake is read afresh.
 """
 
 from __future__ import annotations
@@ -35,7 +37,6 @@ from app.domains.pantry.observations import confidence_bin
 from app.domains.pantry.schemas import (
     QUANTITY_MAX,
     CreateReceiptPantryItems,
-    MergeInto,
     PantryItemOut,
     ReceiptNewItem,
     ReceiptResult,
@@ -68,11 +69,13 @@ def _dec(value: Decimal | None) -> str | None:
 def receipt_hash(draft: ReceiptDraft) -> str | None:
     """SHA-256 over the date, store and total only. The lines are left out on purpose: a second
     photo of the same receipt can read a blurry line differently, and that must still be the same
-    receipt. ``None`` unless both a date and a total were printed: same store, same day, same
-    total identifies a shop; anything less is too weak, so such a receipt is never a duplicate."""
-    if draft.purchased_on is None or draft.total is None:
+    receipt. ``None`` unless a date, a store and a total were all printed: same store, same day,
+    same total identifies a shop; anything less is too weak, so such a receipt is never a
+    duplicate. The store is compared by its letters and digits only ("TRADER JOE'S" is
+    "Trader Joes")."""
+    store = "".join(ch for ch in (draft.store or "").casefold() if ch.isalnum())
+    if draft.purchased_on is None or draft.total is None or not store:
         return None
-    store = " ".join((draft.store or "").lower().split())
     payload = [draft.purchased_on.isoformat(), store, _dec(draft.total)]
     return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
 
@@ -113,7 +116,9 @@ def read_lines(
         elif confidence_bin(line.confidence) != "high":
             skip(line, "low_confidence")
         else:
-            unit = pantry_unit(line.unit) if line.quantity is not None and line.unit else None
+            # An amount that rounds to nothing at the pantry's 3 decimals is not an amount.
+            weighed = line.quantity is not None and round(line.quantity, 3) > 0
+            unit = pantry_unit(line.unit) if weighed and line.unit else None
             bought = Purchase(
                 key=norm.key,
                 label=line.name,
@@ -138,13 +143,11 @@ def read_lines(
 
 
 def _snapshot(row: PantryItem) -> dict[str, object]:
+    """Everything a receipt merge can change on an existing item."""
     return {
         "quantity": _dec(row.quantity),
         "unit": row.unit,
         "last_confirmed_at": row.last_confirmed_at.isoformat() if row.last_confirmed_at else None,
-        "source": row.source.value,
-        "confidence": row.confidence,
-        "quantity_is_estimate": row.quantity_is_estimate,
     }
 
 
@@ -192,37 +195,46 @@ async def save_receipt(
         existing.setdefault(row.normalized_name, row)
 
     items: list[ReceiptNewItem] = []
+    merged: list[PantryItem] = []
     undo_merged: list[dict[str, object]] = []
     for p in purchases:
         target = existing.get(p.key)
-        if target is None:
-            quantity, unit = p.amount, p.unit
-        else:
-            quantity, unit = merged_quantity(target.quantity, target.unit, p), target.unit
+        if target is not None:
+            # Rebought. Only the amount and "last seen" change: the item keeps its source,
+            # confidence, estimate flag, scan link, storage location and note (so this does not
+            # go through ``create_items``, whose merge replaces the amount's provenance).
+            undo_merged.append({"id": str(target.id), "previous": _snapshot(target)})
+            total = merged_quantity(target.quantity, target.unit, p)
+            if total is not None:
+                target.quantity = round(total, 3)
+            target.last_confirmed_at = now
+            merged.append(target)
+            continue
         try:
             item = ReceiptNewItem(
                 raw_label=p.label,
-                quantity=float(quantity) if quantity is not None else None,
-                unit=unit if quantity is not None else None,  # type: ignore[arg-type]
+                quantity=float(p.amount),
+                unit=p.unit,  # type: ignore[arg-type]
                 source="receipt",
                 confidence=p.confidence,
-                resolution=MergeInto(merge_into=target.id) if target is not None else None,
             )
         except pydantic.ValidationError:  # a label or amount the pantry would not accept
             result.skipped.append(ReceiptSkipped(raw_text=p.raw_text, reason="unreadable"))
             continue
         items.append(item)
-        if target is not None:
-            undo_merged.append({"id": str(target.id), "previous": _snapshot(target)})
 
-    saved: list[PantryItem] = []
     if items:
         body = CreateReceiptPantryItems(items=items)
-        saved = await service.create_items(session, user, body, dictionary, now)
-    for item, row in zip(items, saved, strict=True):
-        (result.merged if item.resolution is not None else result.added).append(
-            PantryItemOut.of(row)
-        )
+        added = await service.create_items(session, user, body, dictionary, now)
+        result.added = [PantryItemOut.of(row) for row in added]
+    await session.flush()
+    for row in merged:
+        await session.refresh(row)
+    result.merged = [PantryItemOut.of(row) for row in merged]
+    if not result.added and not result.merged:
+        # Nothing was saved, so nothing is recorded: a sharper retake of a receipt whose first
+        # read was too blurry must be read afresh, not answered with the empty first result.
+        return result
 
     receipt = PantryReceipt(
         owner_user_id=user.id,

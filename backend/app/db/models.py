@@ -688,10 +688,10 @@ class PantryLiveScan(CreatedAtMixin, Base):
 
 
 class PantryReceipt(CreatedAtMixin, Base):
-    """One receipt read into the pantry (brief 017). The photo is never stored. ``receipt_hash``
-    is what makes a second photo of the same receipt a no-op; it is NULL unless the receipt
-    printed both a date and a total (anything less is too weak to identify). ``result_json``
-    holds the first answer (replayed on a repeat) and what an undo needs."""
+    """One receipt that changed the pantry (brief 017). The photo is never stored.
+    ``receipt_hash`` is what makes a second photo of the same receipt a no-op; it is NULL unless
+    the receipt printed a date, a store and a total (anything less is too weak to identify).
+    ``result_json`` holds the first answer (replayed on a repeat) and what an undo needs."""
 
     __tablename__ = "pantry_receipts"
     __table_args__ = (UniqueConstraint("owner_user_id", "receipt_hash"),)
