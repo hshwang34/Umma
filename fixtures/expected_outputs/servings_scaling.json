@@ -1,0 +1,356 @@
+{
+  "_comment": "Shared contract for servings scaling (brief 020). The backend (app/domains/recipes/scaling.py) and the phone must both produce `expected` for every case. Quantities travel with three decimals.",
+  "dial_stops": [
+    {
+      "original_servings": 1,
+      "stops": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "original_servings": 4,
+      "stops": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "original_servings": 6,
+      "stops": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "original_servings": 7,
+      "stops": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "original_servings": 8,
+      "stops": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8
+      ]
+    },
+    {
+      "original_servings": 12,
+      "stops": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        12
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "quantity": 6,
+      "unit": null,
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 1.5
+    },
+    {
+      "quantity": 6,
+      "unit": null,
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 3.0
+    },
+    {
+      "quantity": 1,
+      "unit": null,
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.5
+    },
+    {
+      "quantity": 3,
+      "unit": "",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 1.5
+    },
+    {
+      "quantity": 12,
+      "unit": null,
+      "original_servings": 8,
+      "servings": 3,
+      "expected": 4.5
+    },
+    {
+      "quantity": 2,
+      "unit": "clove",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.5
+    },
+    {
+      "quantity": 2,
+      "unit": "clove",
+      "original_servings": 4,
+      "servings": 3,
+      "expected": 1.5
+    },
+    {
+      "quantity": 1,
+      "unit": "sheet",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.5
+    },
+    {
+      "quantity": 1,
+      "unit": "pinch",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.5
+    },
+    {
+      "quantity": 1,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.25
+    },
+    {
+      "quantity": 1,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 0.5
+    },
+    {
+      "quantity": 1,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 6,
+      "expected": 1.5
+    },
+    {
+      "quantity": 1.5,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 4,
+      "expected": 1.5
+    },
+    {
+      "quantity": 0.5,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.125
+    },
+    {
+      "quantity": 0.25,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 0.125
+    },
+    {
+      "quantity": 0.25,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.125
+    },
+    {
+      "quantity": 2,
+      "unit": "tbsp",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.5
+    },
+    {
+      "quantity": 2,
+      "unit": "tbsp",
+      "original_servings": 4,
+      "servings": 3,
+      "expected": 1.5
+    },
+    {
+      "quantity": 2,
+      "unit": "tbsp",
+      "original_servings": 4,
+      "servings": 5,
+      "expected": 2.5
+    },
+    {
+      "quantity": 2,
+      "unit": "Tablespoons",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 1.0
+    },
+    {
+      "quantity": 1,
+      "unit": "cup",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.25
+    },
+    {
+      "quantity": 1,
+      "unit": "cup",
+      "original_servings": 4,
+      "servings": 3,
+      "expected": 0.75
+    },
+    {
+      "quantity": 0.5,
+      "unit": "cup",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 0.25
+    },
+    {
+      "quantity": 1,
+      "unit": "cup",
+      "original_servings": 3,
+      "servings": 1,
+      "expected": 0.333
+    },
+    {
+      "quantity": 1,
+      "unit": "cup",
+      "original_servings": 3,
+      "servings": 2,
+      "expected": 0.667
+    },
+    {
+      "quantity": 2,
+      "unit": "cup",
+      "original_servings": 3,
+      "servings": 4,
+      "expected": 2.667
+    },
+    {
+      "quantity": 4,
+      "unit": "cup",
+      "original_servings": 8,
+      "servings": 6,
+      "expected": 3.0
+    },
+    {
+      "quantity": 1.5,
+      "unit": "lb",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 0.75
+    },
+    {
+      "quantity": 1.5,
+      "unit": "lb",
+      "original_servings": 4,
+      "servings": 6,
+      "expected": 2.25
+    },
+    {
+      "quantity": 8,
+      "unit": "oz",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 2.0
+    },
+    {
+      "quantity": 1,
+      "unit": "kg",
+      "original_servings": 8,
+      "servings": 2,
+      "expected": 0.25
+    },
+    {
+      "quantity": 400,
+      "unit": "g",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": 200.0
+    },
+    {
+      "quantity": 400,
+      "unit": "g",
+      "original_servings": 4,
+      "servings": 3,
+      "expected": 300.0
+    },
+    {
+      "quantity": 30,
+      "unit": "g",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 8.0
+    },
+    {
+      "quantity": 3,
+      "unit": "g",
+      "original_servings": 4,
+      "servings": 1,
+      "expected": 1.0
+    },
+    {
+      "quantity": 250,
+      "unit": "ml",
+      "original_servings": 4,
+      "servings": 5,
+      "expected": 315.0
+    },
+    {
+      "quantity": null,
+      "unit": "tsp",
+      "original_servings": 4,
+      "servings": 2,
+      "expected": null
+    },
+    {
+      "quantity": null,
+      "unit": null,
+      "original_servings": 4,
+      "servings": 6,
+      "expected": null
+    },
+    {
+      "quantity": 0.333,
+      "unit": "cup",
+      "original_servings": 4,
+      "servings": 4,
+      "expected": 0.333
+    },
+    {
+      "quantity": 7,
+      "unit": "g",
+      "original_servings": 4,
+      "servings": 4,
+      "expected": 7
+    }
+  ]
+}

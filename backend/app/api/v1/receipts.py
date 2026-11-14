@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 
 import pydantic
@@ -13,6 +14,7 @@ from app.ai.guard import provider_for
 from app.ai.providers.base import ReceiptDraft, ReceiptRequest
 from app.core.errors import (
     AppError,
+    NotFound,
     ProviderOutputInvalid,
     ProviderUnavailable,
     UnsupportedMediaType,
@@ -21,9 +23,9 @@ from app.core.errors import (
 from app.core.security import CurrentUser
 from app.db.engine import DbSession
 from app.domains.matching.dictionary import load_dictionary
-from app.domains.pantry import receipts, upload
+from app.domains.pantry import receipt_undo, receipts, upload
 from app.domains.pantry.observations import PROVIDER_TIMEOUT_SECONDS
-from app.domains.pantry.schemas import ReceiptResult
+from app.domains.pantry.schemas import ReceiptResult, ReceiptUndoResult
 
 log = logging.getLogger("umma.pantry.receipts")
 router = APIRouter(prefix="/pantry/receipts", tags=["pantry"])
@@ -83,3 +85,13 @@ async def read_receipt(request: Request, session: DbSession, user: CurrentUser) 
     finally:
         del receipt_request  # the photo is processed in memory only (PRIV-01)
     return await receipts.save_receipt(session, user, draft, dictionary, datetime.now(UTC))
+
+
+@router.post("/{receipt_id}/undo", response_model=ReceiptUndoResult)
+async def undo_receipt(receipt_id: str, session: DbSession, user: CurrentUser) -> ReceiptUndoResult:
+    """Take back everything one receipt did that the user has not touched since."""
+    try:
+        parsed = uuid.UUID(receipt_id)
+    except ValueError as exc:
+        raise NotFound("Receipt not found") from exc
+    return await receipt_undo.undo_receipt(session, user, parsed)

@@ -78,7 +78,7 @@ async def list_media(
     session: DbSession,
     user: CurrentUser,
     settings: SettingsDep,
-    kind: Annotated[Literal["source_video", "step_clip"] | None, Query()] = None,
+    kind: Annotated[Literal["source_video", "step_clip", "cover_image"] | None, Query()] = None,
 ) -> service.MediaList:
     rows = await service.list_media(session, user, kind=MediaKind(kind) if kind else None)
     return service.MediaList(

@@ -295,6 +295,16 @@ class ReceiptWouldAdd(BaseModel):
     unit: str | None
 
 
+class ReceiptUndoResult(BaseModel):
+    """What a whole-receipt undo did. ``unchanged`` names the items it left alone because they
+    were edited, confirmed or merged into after the receipt."""
+
+    receipt_id: uuid.UUID
+    removed: int = 0  # items the receipt created, now deleted
+    restored: int = 0  # rebought items put back to their earlier amount and "last seen"
+    unchanged: list[str] = []
+
+
 class ReceiptResult(BaseModel):
     receipt_id: uuid.UUID | None  # null when nothing was saved (demo included)
     duplicate: bool = False
