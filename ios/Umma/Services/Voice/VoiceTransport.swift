@@ -29,33 +29,6 @@ protocol VoiceTransport: AnyObject {
     func stopSpeaking()
 }
 
-/// Paid tier until brief 012 PR 2 lands: delegates everything to the Free transport and says so.
-@MainActor
-final class PaidVoiceTransport: VoiceTransport {
-    static let fallbackNotice = "Server voice isn't ready yet, so voice runs on this iPhone."
-
-    let tier: VoiceTier = .free
-    private let fallback: any VoiceTransport
-
-    init(fallback: any VoiceTransport) {
-        self.fallback = fallback
-    }
-
-    var isAvailable: Bool { fallback.isAvailable }
-    var inputLabel: String { fallback.inputLabel }
-    var notice: String? { Self.fallbackNotice }
-
-    func start(onEvent: @escaping @MainActor @Sendable (VoiceTransportEvent) -> Void) async throws {
-        try await fallback.start(onEvent: onEvent)
-    }
-
-    func stop() { fallback.stop() }
-    func setInputPaused(_ paused: Bool) { fallback.setInputPaused(paused) }
-    func flushHypothesis() { fallback.flushHypothesis() }
-    func speak(_ text: String) async { await fallback.speak(text) }
-    func stopSpeaking() { fallback.stopSpeaking() }
-}
-
 /// Settings → Voice. "Run voice on this iPhone" keeps a Paid account on the Free pipeline.
 @MainActor
 @Observable
@@ -81,13 +54,15 @@ enum VoiceTierChoice {
         entitlement == .paid && !runOnDevice ? .paid : .free
     }
 
+    /// Paid wraps a Free transport it falls back to (network failure, AI resting, Free account).
     @MainActor
     static func transport(entitlement: User.Entitlement?,
                           runOnDevice: Bool,
-                          makeFree: () -> any VoiceTransport) -> any VoiceTransport {
+                          makeFree: () -> any VoiceTransport,
+                          makePaid: (_ fallback: any VoiceTransport) -> any VoiceTransport) -> any VoiceTransport {
         switch tier(entitlement: entitlement, runOnDevice: runOnDevice) {
         case .free: makeFree()
-        case .paid: PaidVoiceTransport(fallback: makeFree())
+        case .paid: makePaid(makeFree())
         }
     }
 }
