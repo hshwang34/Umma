@@ -17,6 +17,8 @@ struct RecipeDetailView: View {
     @State private var showUnpublishConfirmation = false
     @State private var showPantryFit = false
     @State private var starter: SessionStarter?
+    /// Brief 020: "Cooking for N" is confirmed before the cook is created.
+    @State private var confirmingStart: StartConfirmation?
 
     var body: some View {
         Group {
@@ -197,7 +199,11 @@ struct RecipeDetailView: View {
     private func startCookingButton(_ model: RecipeDetailViewModel) -> some View {
         let loaded = model.detail != nil
         return Button {
-            Task { await startCooking() }
+            if let choice = model.dial?.choice {
+                confirmingStart = StartConfirmation(choice: choice)
+            } else {
+                Task { await startCooking(servings: nil) }
+            }
         } label: {
             if starter?.isStarting == true {
                 ProgressView().tint(SLColor.onBrand)
@@ -211,6 +217,7 @@ struct RecipeDetailView: View {
         .slDisabledAppearance(!loaded)
         .accessibilityIdentifier("recipe.startCooking")
         .accessibilityHint("Starts this version as written. Check my pantry first to swap missing ingredients.")
+        .startConfirmation($confirmingStart) { confirmed in Task { await startCooking(servings: confirmed.servings) } }
     }
 
     private func saveButton(_ model: RecipeDetailViewModel, loaded: Bool) -> some View {
@@ -273,12 +280,13 @@ struct RecipeDetailView: View {
     }
 
     /// Start cooking this exact version as written (no swaps; those are chosen on Pantry fit).
-    private func startCooking() async {
+    /// `servings` is the number the cook just confirmed, not whatever the dial says by now.
+    private func startCooking(servings: Int?) async {
         guard let detail = model?.detail else { return }
         let starter = self.starter ?? SessionStarter(service: environment.api)
         self.starter = starter
         let epoch = environment.cooking.epoch
-        if let session = await starter.start(recipeVersionId: detail.recipeVersionId, adaptations: [], epoch: epoch) {
+        if let session = await starter.start(recipeVersionId: detail.recipeVersionId, adaptations: [], servings: servings, epoch: epoch) {
             environment.cooking.present(newSession: session, epoch: epoch)
         }
     }

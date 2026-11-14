@@ -11,6 +11,8 @@ struct PantryFitView: View {
     @State private var model: PantryFitViewModel?
     @State private var editor: PantryItemEditorModel?
     @State private var swapSheet: SwapTarget?
+    /// Brief 020: "Cooking for N" is confirmed before the cook is created.
+    @State private var confirmingStart: StartConfirmation?
 
     /// The ingredient line a "Find a swap" sheet is open for.
     private struct SwapTarget: Identifiable {
@@ -208,11 +210,10 @@ struct PantryFitView: View {
                 Text(error).font(SLFont.footnote).foregroundStyle(SLColor.danger)
             }
             Button {
-                Task {
-                    let epoch = environment.cooking.epoch
-                    if let session = await model.startCooking(epoch: epoch) {
-                        environment.cooking.present(newSession: session, epoch: epoch, cautions: model.swapCautions)
-                    }
+                if let confirmation = model.startConfirmation {
+                    confirmingStart = confirmation
+                } else {
+                    start(model)
                 }
             } label: {
                 if model.isStarting {
@@ -225,12 +226,22 @@ struct PantryFitView: View {
             .disabled(model.isStarting || model.fit == nil)
             .accessibilityIdentifier("fit.startCooking")
             .accessibilityHint(model.approvedSwapList.isEmpty ? "Starts the recipe as written" : "Starts the recipe with your swaps")
+            .startConfirmation($confirmingStart) { _ in start(model) }
         }
         .padding(.horizontal, Spacing.screen)
         .padding(.vertical, Spacing.sm)
         // Solid, not material: swap cautions live in this bar, and rows passing behind it must
         // not be tappable through it (the List's inset lets every row scroll fully above it).
         .bottomBarScrim()
+    }
+
+    private func start(_ model: PantryFitViewModel) {
+        Task {
+            let epoch = environment.cooking.epoch
+            if let session = await model.startCooking(epoch: epoch) {
+                environment.cooking.present(newSession: session, epoch: epoch, cautions: model.swapCautions)
+            }
+        }
     }
 
     private func header(_ model: PantryFitViewModel) -> some View {

@@ -122,6 +122,11 @@ final class CookingViewModel: CookingSessionClient {
         return "Step \(min(session.stepIndex, session.stepsCount - 1) + 1) of \(session.stepsCount)"
     }
 
+    /// Brief 020: what this cook is for. Always the session's own servings, never the recipe's.
+    var servings: SessionServings? { session.map(SessionServings.init) }
+    /// The current step's ingredients with the session's amounts.
+    var stepIngredients: [StepIngredientRow] { session.map(StepIngredientRow.rows) ?? [] }
+
     var instructionText: String? {
         guard let step = currentStep else { return nil }
         return showOriginal ? step.originalInstruction : step.instruction
