@@ -12,7 +12,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from fastapi import Request
+from starlette.requests import HTTPConnection
 
 from app.db.models import RecipeMedia
 from app.media.storage import ObjectStorage
@@ -41,8 +41,9 @@ def sign(row: RecipeMedia) -> str | None:
     return signer.sign(row) if signer is not None else None
 
 
-async def bind_media_signer(request: Request) -> None:
+async def bind_media_signer(conn: HTTPConnection) -> None:
     """Router dependency. Async on purpose: it runs in the request's own context, so the value
-    is visible to the endpoint (a sync dependency would set it in a worker thread)."""
-    settings = request.app.state.settings
-    bind(MediaSigner(request.app.state.storage, settings.storage_download_url_ttl_seconds))
+    is visible to the endpoint (a sync dependency would set it in a worker thread). Takes an
+    ``HTTPConnection`` so websocket routes under the router resolve it too."""
+    settings = conn.app.state.settings
+    bind(MediaSigner(conn.app.state.storage, settings.storage_download_url_ttl_seconds))
