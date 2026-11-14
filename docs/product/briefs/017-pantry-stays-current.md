@@ -1,6 +1,6 @@
 # 017 — A pantry that stays current
 
-**Status:** approved (direction, 2026-11-14) · **Owner:** PM · **PR:** — · **Updated:** 2026-11-14
+**Status:** building: every PR in the sequence is merged; receipt capture is behind `feature.capture.receipt` (off) until a real-receipt test and a visual pass · **Owner:** PM · **PR:** #54, #55, #64, #65, #76, #86, #95, #96, #106, #108–#111, #115, #116, #119 · **Updated:** 2026-11-14
 
 ## Problem
 The live scan (brief 016) fills a pantry quickly, but nothing keeps it true afterwards. A camera
@@ -95,6 +95,18 @@ week, and they open Umma to decide what to cook tonight.
   the first result, so a repeat upload replays it.
 - The ingredient dictionary already has a `category` field with 17 `protein` entries, which the
   key-ingredient rule uses.
+- Shopping list (#95, #96): one open item per owner and normalised name. Completing a session
+  adds what was missing at the start and never swapped; a saved receipt ticks off matching
+  items. Whole-receipt undo does not yet re-open the items it ticked.
+- "I don't have that" while cooking (#106, #116) is rule-based with no AI call. It only
+  proposes: the phone confirms through the existing swap command, the shopping list and the
+  pantry delete, each on its own tap. **Open product question: the brief says the words
+  themselves remove the item and add it to the list.**
+- Key-ingredient card (#109): "I don't have that" removes the item and adds it to the shopping
+  list as `ran_out` on that one tap, with no second dialog.
+- Receipt (#108, #119): the capture sheet cannot be closed while a receipt is being read, and
+  the result reaches the Pantry screen even if the sheet has gone. Undo exists while the banner
+  is showing.
 
 ## Risks / what could go wrong for users
 - **A receipt line is misread** and a wrong item lands in the pantry with no review. Limited by

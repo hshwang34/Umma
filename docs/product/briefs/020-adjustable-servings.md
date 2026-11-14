@@ -1,6 +1,6 @@
 # 020 — Cook for the people at your table: adjustable servings
 
-**Status:** approved · **Owner:** PM · **PR:** — · **Updated:** 2026-11-14
+**Status:** building: all eight PRs are merged; a visual pass on a phone remains · **Owner:** PM · **PR:** #80, #87, #94, #104, #105, #112, #113, #114 · **Updated:** 2026-11-14
 
 ## Problem
 Every recipe shows "Serves 4" as a fixed label. A cook feeding one person, or six, has to do
@@ -113,6 +113,17 @@ None. Answered in DECISIONS #35.
   the backend. One shared fixture keeps the two implementations identical.
 - Servings is a column on the session, not a field in `adaptation_json`, so it is validated
   and part of the session contract. Null means the recipe's original.
+- An invalid `servings` is a 422; only whole numbers that are dial stops are accepted. The
+  session stores what was sent, and no command can change it.
+- The phone always sends the dial's number, even when it equals the recipe's original.
+- In a session, the scaled amounts are in the session's ingredient list while `recipe.servings`
+  stays the creator's, so the phone shows `servings` and `original_servings`.
+- The iOS scaling rules are a port tested against a byte-identical copy of the shared fixture.
+  Nothing yet fails if the two copies drift.
+- Start cooking now asks to confirm "Cooking for N" on every start, and the cook screen lists
+  the step's ingredients in the session's amounts. **Open product questions: confirm only when
+  scaled; whether the ingredient block suits the cook screen.**
+- Swap amounts in the "I don't have that" offer are not scaled to the session's servings.
 
 ## Risks / what could go wrong for users
 - **Odd amounts** (⅓ of an egg, 0.17 tsp). Mitigation: rounding rules per kind of unit, and a
