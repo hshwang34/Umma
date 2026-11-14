@@ -368,7 +368,6 @@ struct MessageBlock: View {
     var isWarning = false
     var showsSettings = false
     var retry: (() -> Void)? = nil
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
@@ -378,11 +377,7 @@ struct MessageBlock: View {
                 Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "info.circle.fill")
             }
             .foregroundStyle(isWarning ? SLColor.warning : SLColor.textSecondary)
-            if showsSettings, let url = URL(string: UIApplication.openSettingsURLString) {
-                Button("Open Settings") { openURL(url) }
-                    .font(SLFont.callout.weight(.semibold))
-                    .frame(minHeight: Metrics.minTapTarget)
-            }
+            if showsSettings { OpenSettingsButton() }
             if let retry {
                 Button("Retry", action: retry)
                     .font(SLFont.callout.weight(.semibold))

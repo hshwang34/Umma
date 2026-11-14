@@ -17,7 +17,15 @@ enum APIError: Error, Equatable, Sendable {
     case decoding(String)
     case cancelled
 
-    var userMessage: String {
+    static let connectionMessage = "Can’t reach Umma right now. Check your connection and try again."
+    static let genericMessage = "Something went wrong. Try again."
+
+    var userMessage: String { userMessage(debug: BuildConfig.isDebug) }
+
+    /// A debug build names the server address and the HTTP status for whoever is developing.
+    /// A release build says the same things in plain words (brief 010).
+    func userMessage(debug: Bool) -> String {
+        guard debug else { return releaseMessage }
         switch self {
         case .noServerConfigured:
             return "Set the server address in Profile → Server settings to continue."
@@ -33,6 +41,23 @@ enum APIError: Error, Equatable, Sendable {
             return "The server returned an unexpected error (HTTP \(status))."
         case .decoding:
             return "The server sent something this build doesn’t understand."
+        case .cancelled:
+            return "Cancelled."
+        }
+    }
+
+    private var releaseMessage: String {
+        switch self {
+        case .noServerConfigured, .invalidURL, .unreachable:
+            return Self.connectionMessage
+        case .unauthorized(let message, _):
+            return message ?? "Your session ended. Please sign in again."
+        case .server(_, _, let message, _, _, _):
+            return message.isEmpty ? Self.genericMessage : message
+        case .http:
+            return "Something went wrong on our side. Try again in a moment."
+        case .decoding:
+            return "Umma couldn’t read the server’s reply. Updating the app may fix it."
         case .cancelled:
             return "Cancelled."
         }

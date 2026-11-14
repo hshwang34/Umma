@@ -166,7 +166,7 @@ final class CaptureCoordinator {
             // Nothing was heard: drop the empty session rather than leave it open.
             outbox.forget()
             try? await api.deleteCaptureSession(id: session.id)
-            fail("Couldn’t start listening: \(error.localizedDescription)")
+            fail(RecordPresentation.listenFailureMessage(error))
         }
     }
 
@@ -211,7 +211,7 @@ final class CaptureCoordinator {
             if session.paused { enqueue(.command(CaptureCommandRequest(command: .resume, tMs: nowMs))) }
         } catch {
             guard token == runToken else { return silence() }
-            phase = .voiceStopped("Couldn’t start listening: \(error.localizedDescription)")
+            phase = .voiceStopped(RecordPresentation.listenFailureMessage(error))
         }
     }
 
@@ -359,7 +359,7 @@ final class CaptureCoordinator {
         } catch {
             // A teardown cancels the start; its message ("Recording stopped…") stays.
             if token == runToken {
-                phase = .voiceStopped("Couldn’t start listening: \(error.localizedDescription)")
+                phase = .voiceStopped(RecordPresentation.listenFailureMessage(error))
             }
             return false
         }
@@ -593,7 +593,7 @@ final class CaptureCoordinator {
     }
 
     static func message(_ error: Error) -> String {
-        (error as? APIError)?.userMessage ?? error.localizedDescription
+        error.userFacingMessage
     }
 
     private static func endedText(_ reason: VoiceEndReason) -> String {

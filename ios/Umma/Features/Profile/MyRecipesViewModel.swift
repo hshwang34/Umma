@@ -48,7 +48,7 @@ final class MyRecipesViewModel {
         } catch {
             let apiError = error as? APIError
             if apiError == .cancelled { return }
-            phase = .error(message: apiError?.userMessage ?? error.localizedDescription, retryable: apiError?.isRetryable ?? true)
+            phase = .error(message: error.userFacingMessage, retryable: apiError?.isRetryable ?? true)
         }
     }
 
@@ -65,7 +65,7 @@ final class MyRecipesViewModel {
             }
             return true
         } catch {
-            actionError = (error as? APIError)?.userMessage ?? error.localizedDescription
+            actionError = error.userFacingMessage
             return false
         }
     }
@@ -86,7 +86,7 @@ final class MyRecipesViewModel {
             }
             return true
         } catch {
-            actionError = (error as? APIError)?.userMessage ?? error.localizedDescription
+            actionError = error.userFacingMessage
             return false
         }
     }

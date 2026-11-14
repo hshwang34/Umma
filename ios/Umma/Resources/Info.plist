@@ -43,7 +43,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Umma uses the camera only when you tap to scan your pantry or ask the coach to look at a step. Nothing is recorded in the background.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Umma connects to an Umma server on your local network during development so the app can load recipes from your own machine.</string>
+	<string>Umma uses your local network only to reach an Umma server that you run yourself.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Umma listens only while you hold the talk button, so you can ask about a step or update your pantry hands-free.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

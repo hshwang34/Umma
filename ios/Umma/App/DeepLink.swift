@@ -2,11 +2,11 @@ import Foundation
 
 /// Share / deep-link formats (brief 003, REC-01):
 /// - custom scheme `umma://recipe/{recipe_id}`
-/// - universal link `https://umma.app/r/{recipe_id}` (association is a stub in this slice;
-///   the domain is not live, but the path is handled when iOS hands it to the app).
+/// - universal link `https://ummacooks.app/r/{recipe_id}` (the domain we own, and the one in
+///   the associated-domains entitlement; the path is handled when iOS hands it to the app).
 enum ShareLinks {
     static let scheme = "umma"
-    static let universalHost = "umma.app"
+    static let universalHost = "ummacooks.app"
 
     static func universal(recipeId: UUID) -> URL {
         URL(string: "https://\(universalHost)/r/\(recipeId.uuidString.lowercased())")!
@@ -35,7 +35,7 @@ enum DeepLink: Equatable, Sendable {
             guard host == "recipe", segments.count == 1 else { return nil }
             return UUID(uuidString: segments[0]).map(DeepLink.recipe)
         case "https":
-            // Only the exact host in the associated-domains entitlement (`applinks:umma.app`).
+            // Only the exact host in the associated-domains entitlement (`applinks:ummacooks.app`).
             guard host == ShareLinks.universalHost,
                   segments.count == 2, segments[0] == "r"
             else { return nil }

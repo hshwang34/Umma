@@ -27,6 +27,9 @@ final class VoiceSession {
     /// The user's in-flight hypothesis.
     private(set) var partial: VoiceSegment?
     private(set) var inputLabel: String
+    /// The last start failed because the microphone or speech recognition is not allowed
+    /// (brief 010). The voice bar then offers "Open Settings". Cleared by the next start.
+    private(set) var deniedPermission = false
     /// Updated every tick while listening; 0 while paused, thinking or speaking.
     private(set) var silenceMs: Int64 = 0
     /// Session time of the last detected speech.
@@ -84,7 +87,8 @@ final class VoiceSession {
             }
         } catch {
             guard startGate.isCurrent(token) else { throw CaptureError.cancelled }
-            finish(.failed(error.localizedDescription))
+            deniedPermission = error.isPermissionDenied
+            finish(.failed(error.userFacingMessage))
             throw error
         }
         guard startGate.isCurrent(token) else {
@@ -290,6 +294,7 @@ final class VoiceSession {
         speechGeneration += 1
         originMs = clock.nowMs
         endedAtMs = nil
+        deniedPermission = false
         userCaptions = []
         assistantCaptions = []
         partial = nil

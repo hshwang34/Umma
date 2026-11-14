@@ -135,7 +135,7 @@ final class SpeakCaptureViewModel {
             if gate.isCurrent(token) { handle(error) }
             return
         } catch {
-            if gate.isCurrent(token) { message = error.localizedDescription }
+            if gate.isCurrent(token) { message = error.userFacingMessage }
             return
         }
         // Released (or stopped) while the start was suspended: never open the relay. Tear the
@@ -310,7 +310,7 @@ final class ScanCaptureViewModel {
             }
         } catch {
             await camera.stopPreview()
-            message = error.localizedDescription
+            message = error.userFacingMessage
         }
     }
 

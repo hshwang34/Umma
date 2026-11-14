@@ -57,7 +57,7 @@ struct PublishConfirmationSheet: View {
 
 /// Success screen: version, share link, share sheet.
 struct PublishedView: View {
-    /// Honest about the universal-link stub (brief 003): umma.app serves no pages yet.
+    /// Honest about the universal-link stub (brief 003): ummacooks.app serves no recipe pages yet.
     static let linkCaveat = "Link pages aren’t live yet; the link opens the app if Umma is installed."
 
     let result: PublishResult

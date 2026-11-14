@@ -65,7 +65,7 @@ final class DefaultServingsViewModel {
             selected = saved
         } catch {
             selected = saved
-            errorMessage = "Couldn’t save your default servings: \((error as? APIError)?.userMessage ?? error.localizedDescription)"
+            errorMessage = "Couldn’t save your default servings: \(error.userFacingMessage)"
         }
     }
 }

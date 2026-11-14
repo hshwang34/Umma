@@ -115,7 +115,7 @@ final class OnboardingViewModel {
         } catch let error as APIError where error == .cancelled {
             return
         } catch {
-            suggestionsPhase = .error((error as? APIError)?.userMessage ?? error.localizedDescription)
+            suggestionsPhase = .error(error.userFacingMessage)
         }
     }
 
@@ -130,7 +130,7 @@ final class OnboardingViewModel {
             if let j = suggestions.firstIndex(where: { $0.id == creatorId }) { suggestions[j] = updated }
         } catch {
             if let j = suggestions.firstIndex(where: { $0.id == creatorId }) { suggestions[j].isFollowing = wasFollowing }
-            errorMessage = "Couldn’t update: \((error as? APIError)?.userMessage ?? error.localizedDescription)"
+            errorMessage = "Couldn’t update: \(error.userFacingMessage)"
         }
     }
 
@@ -199,7 +199,7 @@ final class OnboardingViewModel {
         } catch let error as APIError where error == .cancelled {
             return
         } catch {
-            errorMessage = (error as? APIError)?.userMessage ?? error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

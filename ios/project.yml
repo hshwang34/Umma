@@ -54,9 +54,9 @@ targets:
         # Sign in with Apple (brief 010).
         com.apple.developer.applesignin:
           - Default
-        # Universal-link stub (brief 003): the domain is not live yet; `onOpenURL` handles the path.
+        # Universal links on the domain we own; the site serves the association file.
         com.apple.developer.associated-domains:
-          - applinks:umma.app
+          - applinks:ummacooks.app
     info:
       path: Umma/Resources/Info.plist
       properties:
@@ -89,9 +89,10 @@ targets:
         NSSpeechRecognitionUsageDescription: >-
           Speech recognition turns what you say into text so the coach can answer. Audio may be
           processed by Apple to transcribe it and is not kept by Umma afterwards.
+        # Only a debug build pointed at a LAN address ever triggers this prompt; XcodeGen writes
+        # one Info.plist for every configuration, so the copy is true for both.
         NSLocalNetworkUsageDescription: >-
-          Umma connects to an Umma server on your local network during development so the
-          app can load recipes from your own machine.
+          Umma uses your local network only to reach an Umma server that you run yourself.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     dependencies: []

@@ -303,7 +303,7 @@ struct RecipeDetailView: View {
                 creator: Creator(id: user.id, displayName: user.displayName)
             )
         } catch {
-            model.setActionError((error as? APIError)?.userMessage ?? error.localizedDescription)
+            model.setActionError(error.userFacingMessage)
         }
     }
 

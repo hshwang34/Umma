@@ -118,7 +118,7 @@ final class RecipeDetailViewModel {
             if error == .cancelled { return }
             phase = .error(error.userMessage, retryable: error.isRetryable)
         } catch {
-            phase = .error(error.localizedDescription, retryable: true)
+            phase = .error(error.userFacingMessage, retryable: true)
         }
     }
 
@@ -139,7 +139,7 @@ final class RecipeDetailViewModel {
             isSaved = previous
         } catch {
             isSaved = previous
-            saveError = (error as? APIError)?.userMessage ?? error.localizedDescription
+            saveError = error.userFacingMessage
         }
     }
 
@@ -159,7 +159,7 @@ final class RecipeDetailViewModel {
             unpublishedVisibility = result.visibility
             return true
         } catch {
-            actionError = (error as? APIError)?.userMessage ?? error.localizedDescription
+            actionError = error.userFacingMessage
             return false
         }
     }

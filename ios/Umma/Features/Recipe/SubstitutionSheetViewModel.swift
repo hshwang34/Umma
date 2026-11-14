@@ -160,7 +160,7 @@ final class SubstitutionSheetViewModel {
                            ? "Can’t reach the server to look for swaps. You can keep it missing and try again later."
                            : error.userMessage)
         } catch {
-            phase = .error(error.localizedDescription)
+            phase = .error(error.userFacingMessage)
         }
     }
 

@@ -58,7 +58,7 @@ final class Slice1FixRoundTests: XCTestCase {
             service.detailHandler = { _ in detail }
             let model = RecipeDetailViewModel(recipeId: recipeId, service: service)
             await model.load()
-            XCTAssertEqual(model.shareURL.absoluteString, "https://umma.app/r/\(AuthoringFixtures.recipeId)", hostile)
+            XCTAssertEqual(model.shareURL.absoluteString, "https://ummacooks.app/r/\(AuthoringFixtures.recipeId)", hostile)
 
             let publish = try JSONCoding.makeDecoder().decode(PublishResult.self, from: Data("""
             {"recipe_id":"\(AuthoringFixtures.recipeId)","recipe_version_id":"\(AuthoringFixtures.versionId)","version_number":1,"share_url":\(hostile)}

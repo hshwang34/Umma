@@ -199,7 +199,7 @@ final class DraftEditorViewModel: Identifiable {
                 self.saveStatus = self.dirty ? .pending : .saved
             } catch {
                 let apiError = error as? APIError
-                var message = apiError?.userMessage ?? error.localizedDescription
+                var message = error.userFacingMessage
                 if apiError?.status == 409 {
                     // Contract: PATCH on a draft that has been published → 409 STATE_CONFLICT.
                     message = "This draft was already published and can’t be changed. Use Edit on the recipe to start a new version."
@@ -289,7 +289,7 @@ final class DraftEditorViewModel: Identifiable {
                 ? "\(error.userMessage) The recipe may or may not have been published; check My recipes before trying again."
                 : error.userMessage)
         } catch {
-            publishPhase = .failed(error.localizedDescription)
+            publishPhase = .failed(error.userFacingMessage)
         }
     }
 

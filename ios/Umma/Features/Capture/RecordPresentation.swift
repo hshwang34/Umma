@@ -48,6 +48,22 @@ extension RecordPresentation {
                              notice: session.notice,
                              showsControls: false)
     }
+
+    /// What the recording screen says when the microphone would not start. A denied permission
+    /// is its own explanation; anything else gets a short lead-in.
+    static func listenFailureMessage(_ error: Error) -> String {
+        error.isPermissionDenied ? error.userFacingMessage : "Couldn’t start listening: \(error.userFacingMessage)"
+    }
+
+    /// "Open Settings" belongs under the status line while the recording is stopped or failed
+    /// because the microphone or speech recognition is not allowed.
+    static func showsOpenSettings(phase: CaptureCoordinator.Phase, deniedPermission: Bool) -> Bool {
+        guard deniedPermission else { return false }
+        switch phase {
+        case .voiceStopped, .failed: return true
+        default: return false
+        }
+    }
 }
 
 /// What the recording screen shows for one moment of a `CaptureCoordinator`. Pure, so tests assert

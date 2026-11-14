@@ -262,6 +262,6 @@ extension Error {
             }
             return api.userMessage
         }
-        return (self as? LocalizedError)?.errorDescription ?? localizedDescription
+        return userFacingMessage
     }
 }

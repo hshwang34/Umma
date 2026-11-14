@@ -37,6 +37,9 @@ protocol AuthService: Sendable {
     func signInWithApple(identityToken: String, nonce: String, authorizationCode: String?, displayName: String?) async throws -> AuthResponse
     /// Sign in with Google (brief 010): exchange Google's ID token and the raw nonce for our token.
     func signInWithGoogle(idToken: String, nonce: String) async throws -> AuthResponse
+    /// Review access (brief 010): exchange the review code for our token. 401 = wrong code,
+    /// 429 = too many tries, 404 = this server has no review login.
+    func signInWithReviewCode(_ code: String) async throws -> AuthResponse
     func me() async throws -> User
     /// `DELETE /v1/me` (brief 010): deletes the account and everything in it. 204 on success.
     func deleteAccount() async throws
@@ -124,6 +127,13 @@ final class APIClient: Sendable, RecipeService, AuthService {
     func signInWithGoogle(idToken: String, nonce: String) async throws -> AuthResponse {
         let body = try encoder.encode(GoogleSignInRequest(idToken: idToken, nonce: nonce))
         return try await send(.post("/v1/auth/google", body: body), authenticated: false)
+    }
+
+    func signInWithReviewCode(_ code: String) async throws -> AuthResponse {
+        // Unauthenticated, so a refusal never reaches the global sign-out path. Only the path
+        // and status are logged, never the body.
+        let body = try encoder.encode(ReviewSignInRequest(code: code))
+        return try await send(.post("/v1/auth/review", body: body), authenticated: false)
     }
 
     func me() async throws -> User {

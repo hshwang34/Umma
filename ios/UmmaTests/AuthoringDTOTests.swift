@@ -200,7 +200,7 @@ final class AuthoringDTOTests: XCTestCase {
         let detail = try Fixtures.decode(RecipeDetail.self, from: "recipe_detail")
         XCTAssertNil(detail.saved)
         XCTAssertEqual(detail.shareUrl, "https://umma.app/r/a185d1a4-2726-57b9-9b17-069262cbf492", "the verbatim backend fixture now carries share_url")
-        XCTAssertEqual(detail.shareURL.absoluteString, "https://umma.app/r/a185d1a4-2726-57b9-9b17-069262cbf492")
+        XCTAssertEqual(detail.shareURL.absoluteString, "https://ummacooks.app/r/a185d1a4-2726-57b9-9b17-069262cbf492")
         // Cached cards (no `saved`) round-trip unchanged.
         let data = try JSONCoding.makeEncoder().encode(page)
         XCTAssertEqual(try JSONCoding.makeDecoder().decode(RecipePage.self, from: data), page)
