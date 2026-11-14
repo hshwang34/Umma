@@ -25,6 +25,7 @@ from app.core.security import DevAuthProvider
 from app.db.engine import make_engine, make_sessionmaker
 from app.domains.recipes import stock_photos
 from app.domains.users.apple import AppleIdentityVerifier, http_key_fetcher
+from app.domains.users.apple_tokens import build_apple_token_client
 from app.domains.users.google import GoogleIdentityVerifier
 from app.media.storage import build_storage
 from app.voice.registry import build_stt, build_tts
@@ -107,6 +108,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             audience=settings.apple_bundle_id,
             fetch_keys=http_key_fetcher(settings.apple_keys_url),
         )
+        # Code exchange and revoke for account deletion; None without the Apple key settings.
+        app.state.apple_token_client = build_apple_token_client(settings)
         app.include_router(auth_apple_router.router, **sign_in)
         if settings.google_ios_client_id:
             # Sign in with Google (DECISIONS #33): only when its iOS client id is configured.

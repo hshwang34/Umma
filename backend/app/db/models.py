@@ -177,6 +177,18 @@ class User(TimestampMixin, Base):
     default_servings: Mapped[int | None] = mapped_column(Integer)
 
 
+class AppleCredential(TimestampMixin, Base):
+    """A Sign in with Apple refresh token, encrypted (brief 010 PR 2). Kept only so account
+    deletion can revoke it at Apple; never logged or returned. Deleted with the user."""
+
+    __tablename__ = "apple_credentials"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    refresh_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class Follow(CreatedAtMixin, Base):
     """A user following a creator (brief 015, DECISIONS #27). No followers list or notifications."""
 

@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     # Sign in with Apple (brief 010): identity tokens must be issued for this bundle id.
     apple_bundle_id: str = "com.umma.ios"
     apple_keys_url: str = "https://appleid.apple.com/auth/keys"
+    # Apple token revoke on account deletion (brief 010 PR 2, guideline 5.1.1(v)). All three
+    # are optional: without them sign-in still works, no refresh token is stored, and account
+    # deletion skips the revoke (logged). The key is the Sign in with Apple .p8 file's text.
+    apple_team_id: str | None = None
+    apple_key_id: str | None = None
+    apple_private_key: SecretStr | None = None
+    apple_token_url: str = "https://appleid.apple.com/auth/token"
+    apple_revoke_url: str = "https://appleid.apple.com/auth/revoke"
     # Sign in with Google (DECISIONS #33): the iOS OAuth client id ID tokens must be issued for.
     # Not a secret. Unset means the Google route does not exist.
     google_ios_client_id: str | None = None
@@ -234,6 +242,11 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_MODE=dev is only allowed when ENVIRONMENT is dev or test")
         if not self.apple_keys_url.startswith("https://"):
             raise ValueError("APPLE_KEYS_URL must be https://")
+        if not (
+            self.apple_token_url.startswith("https://")
+            and self.apple_revoke_url.startswith("https://")
+        ):
+            raise ValueError("APPLE_TOKEN_URL and APPLE_REVOKE_URL must be https://")
         if not self.google_keys_url.startswith("https://"):
             raise ValueError("GOOGLE_KEYS_URL must be https://")
         if self.ai_month_soft_cap_usd > self.ai_month_hard_cap_usd:
@@ -271,6 +284,11 @@ class Settings(BaseSettings):
                 "CLIENT_IP_HEADER must be set in prod (Fly: Fly-Client-IP); without it every "
                 "caller shares the proxy's address and one per-IP rate limit"
             )
+
+    @property
+    def apple_revoke_configured(self) -> bool:
+        key = self.apple_private_key.get_secret_value() if self.apple_private_key else ""
+        return bool(self.apple_team_id and self.apple_key_id and key.strip())
 
     @property
     def voice_stt_configured(self) -> bool:
