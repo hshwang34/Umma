@@ -195,6 +195,7 @@ class DraftPatch(BaseModel):
     validation: Any = Field(default=None, exclude=True)
     created_at: Any = Field(default=None, exclude=True)
     updated_at: Any = Field(default=None, exclude=True)
+    cover_media_id: Any = Field(default=None, exclude=True)  # set by the cover routes only
 
 
 CONTENT_FIELDS: frozenset[str] = frozenset(
@@ -269,6 +270,8 @@ class DraftSummary(BaseModel):
     summary: str | None
     tags: list[str]
     cover_image_url: str | None
+    cover_media_id: uuid.UUID | None = None
+    """Brief 019: the confirmed cover photo; read it with ``GET /v1/media/{id}``."""
     servings: int | None
     prep_minutes: int | None
     cook_minutes: int | None
@@ -288,6 +291,8 @@ class Draft(BaseModel):
     summary: str | None
     tags: list[str]
     cover_image_url: str | None
+    cover_media_id: uuid.UUID | None = None
+    """Brief 019: the confirmed cover photo; read it with ``GET /v1/media/{id}``."""
     servings: int | None
     prep_minutes: int | None
     cook_minutes: int | None

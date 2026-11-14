@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from app.core.errors import NotFound
 from app.core.security import CurrentUser, SettingsDep
 from app.db.engine import DbSession
 from app.domains.extraction import jobs
+from app.domains.media import covers
+from app.domains.media.service import media_id_or_404
 from app.domains.recipes import drafts
 from app.domains.recipes.draft_schemas import Draft, DraftList, DraftPatch, PublishResult
 
@@ -81,3 +83,60 @@ async def trim_step_clip(
     """Re-render this step's clip from the source video (brief 008)."""
     job = await jobs.request_trim(session, user, _draft_id(draft_id), step_id, body)
     return jobs.to_job_out(job)
+
+
+# --- Cover photo (brief 019) ----------------------------------------------------------------
+
+
+@router.post(
+    "/{draft_id}/cover/upload-intents",
+    response_model=covers.CoverIntentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_cover_intent(
+    draft_id: str,
+    body: covers.CoverIntentIn,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    settings: SettingsDep,
+) -> covers.CoverIntentOut:
+    """A presigned PUT for one JPEG cover photo of this draft."""
+    return await covers.create_intent(
+        session,
+        user,
+        _draft_id(draft_id),
+        body,
+        settings=settings,
+        storage=request.app.state.storage,
+    )
+
+
+@router.post("/{draft_id}/cover/{media_id}/uploaded", response_model=Draft)
+async def confirm_cover(
+    draft_id: str,
+    media_id: str,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    settings: SettingsDep,
+) -> Draft:
+    """Check the uploaded photo and make it the draft's cover (replacing any earlier one)."""
+    row, rejected = await covers.confirm(
+        session,
+        user,
+        _draft_id(draft_id),
+        media_id_or_404(media_id),
+        settings=settings,
+        storage=request.app.state.storage,
+    )
+    if rejected is not None:
+        await session.commit()  # keep the ``rejected`` status and the queued object delete
+        raise rejected
+    return drafts.to_draft(row)
+
+
+@router.delete("/{draft_id}/cover", response_model=Draft)
+async def remove_cover(draft_id: str, session: DbSession, user: CurrentUser) -> Draft:
+    """Remove the draft's cover photo. Idempotent; published versions keep theirs."""
+    return drafts.to_draft(await covers.remove(session, user, _draft_id(draft_id)))

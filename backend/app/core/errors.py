@@ -157,6 +157,25 @@ class UploadIncomplete(AppError):
     retryable = True
 
 
+class ImageTypeUnsupported(AppError):
+    """Brief 019: cover photos are JPEG only."""
+
+    code = "IMAGE_TYPE_UNSUPPORTED"
+    status_code = 415
+
+
+class ImageTooLarge(AppError):
+    code = "IMAGE_TOO_LARGE"
+    status_code = 413
+
+
+class UploadRejected(AppError):
+    """The uploaded object failed the server's checks (size, type); upload a new one."""
+
+    code = "UPLOAD_REJECTED"
+    status_code = 422
+
+
 class VideoExtractionLimit(AppError):
     """DECISIONS #19: at most N video extractions per user per UTC month."""
 

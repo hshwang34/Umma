@@ -15,6 +15,7 @@ Invariants enforced here (CLAUDE.md):
   ``creator_reviewed`` (the creator approved them), refuses steps whose clip is still rendering
   or failed, attaches the used clips to the version and discards the draft's other clips.
   Deleting a draft deletes its unpublished clips; the source video is kept (DECISIONS #20).
+* Brief 019: deleting a draft deletes its unpublished cover photos too.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import NotFound, StateConflict, ValidationError
 from app.db.models import DraftStatus, Recipe, RecipeDraft, RecipeVersion, User, Visibility
 from app.domains.capture.privacy import purge_transcript_for_draft
+from app.domains.media import covers
 from app.domains.media import service as media
 from app.domains.ownership import get_owned_or_404
 from app.domains.recipes.draft_schemas import (
@@ -209,6 +211,7 @@ def to_draft(row: RecipeDraft) -> Draft:
         validation=validate(content),
         created_at=row.created_at,
         updated_at=row.updated_at,
+        cover_media_id=row.cover_media_id,
         **content.model_dump(),
     )
 
@@ -223,6 +226,7 @@ def to_summary(row: RecipeDraft) -> DraftSummary:
         summary=content.summary,
         tags=content.tags,
         cover_image_url=content.cover_image_url,
+        cover_media_id=row.cover_media_id,
         servings=content.servings,
         prep_minutes=content.prep_minutes,
         cook_minutes=content.cook_minutes,
@@ -294,6 +298,7 @@ async def delete_draft(session: AsyncSession, user: User, draft_id: uuid.UUID) -
     row = await get_draft_row(session, user, draft_id)
     ensure_not_extracting(row)
     await media.discard_unpublished_clips(session, row.id)
+    await covers.discard_for_draft(session, row.id)
     await purge_transcript_for_draft(session, row.id)  # brief 014: discarded → transcript gone
     await session.delete(row)
     await session.flush()
