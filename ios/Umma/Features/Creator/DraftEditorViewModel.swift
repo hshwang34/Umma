@@ -202,7 +202,7 @@ final class DraftEditorViewModel: Identifiable {
                 var message = error.userFacingMessage
                 if apiError?.status == 409 {
                     // Contract: PATCH on a draft that has been published → 409 STATE_CONFLICT.
-                    message = "This draft was already published and can’t be changed. Use Edit on the recipe to start a new version."
+                    message = "This draft is already published. To change the recipe, open it and tap Edit."
                     self.isPublishedReadOnly = true
                 }
                 self.logger.error("autosave failed: \(message, privacy: .public)")
@@ -241,11 +241,11 @@ final class DraftEditorViewModel: Identifiable {
     }
 
     var publishConfirmationTitle: String {
-        if let version = nextVersionNumber { return "Publish version \(version)?" }
-        return "Publish a new version?"
+        // A first publish and an update read differently; the version number is ours, not the cook's.
+        nextVersionNumber == 1 ? "Publish this recipe?" : "Publish your changes?"
     }
 
-    static let publishConfirmationMessage = "This snapshot can’t be edited; later edits create a new version."
+    static let publishConfirmationMessage = "Anyone on Umma can find and cook it. You can edit it later, and anyone already cooking keeps the recipe they started."
 
     func requestPublish() {
         guard canPublish else { return }

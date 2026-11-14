@@ -125,7 +125,7 @@ struct ChipFlow: View {
                     .background(SLColor.accentSoft, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isFlagged(entry) ? "\(entry), not recognised. Remove" : "\(entry). Remove")
+                .accessibilityLabel(isFlagged(entry) ? "\(entry), not recognized. Remove" : "\(entry). Remove")
             }
         }
         .padding(.vertical, Spacing.xs)

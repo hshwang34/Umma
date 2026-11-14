@@ -159,7 +159,7 @@ final class AuthStoreTests: XCTestCase {
         XCTAssertNil(h.tokenStore.currentToken(), "401 must clear the stored token")
         XCTAssertNil(h.defaults.data(forKey: AuthStore.cachedUserKey))
         XCTAssertNil(h.cache.load(), "recipe cache is dropped with the session")
-        XCTAssertEqual(h.auth.banner, "Your session ended. Please sign in again.")
+        XCTAssertEqual(h.auth.banner, "You’ve been signed out. Sign in again to continue.")
     }
 
     func testStaleGeneration401IsIgnored() async throws {

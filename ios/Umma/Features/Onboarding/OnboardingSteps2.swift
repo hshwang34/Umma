@@ -110,7 +110,7 @@ struct PantryStep: View {
                 .accessibilityIdentifier("onboarding.pantry.scan")
             choice("mic.fill", "Say what I have", "Talk or type a list, like “eggs, rice, kimchi”.") { capture = .speak }
                 .accessibilityIdentifier("onboarding.pantry.speak")
-            Text("Not now? Tap Skip. You can scan any time from the Pantry tab.")
+            Text("You can also do this later from the Pantry tab.")
                 .font(SLFont.footnote)
                 .foregroundStyle(SLColor.textSecondary)
         }

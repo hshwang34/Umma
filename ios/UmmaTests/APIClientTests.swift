@@ -130,7 +130,7 @@ final class APIClientTests: XCTestCase {
     }
 
     func testUnauthorizedWithoutEnvelopeUsesDefaultMessage() {
-        XCTAssertEqual(APIError.unauthorized(message: nil, correlationId: nil).userMessage, "Your session ended. Please sign in again.")
+        XCTAssertEqual(APIError.unauthorized(message: nil, correlationId: nil).userMessage, "You’ve been signed out. Sign in again to continue.")
     }
 
     func testUnauthorizedOnUnauthenticatedVerifyDoesNotFireGlobalEvent() async throws {

@@ -193,8 +193,8 @@ final class DraftEditorViewModelTests: XCTestCase {
 
         XCTAssertTrue(model.canPublish)
         XCTAssertEqual(model.publishPhase, .idle)
-        XCTAssertEqual(model.publishConfirmationTitle, "Publish version 2?")
-        XCTAssertEqual(DraftEditorViewModel.publishConfirmationMessage, "This snapshot can’t be edited; later edits create a new version.")
+        XCTAssertEqual(model.publishConfirmationTitle, "Publish your changes?")
+        XCTAssertFalse(DraftEditorViewModel.publishConfirmationMessage.contains("version"), "plain words, no version talk")
 
         await model.confirmPublish()
         XCTAssertEqual(model.publishPhase, .idle, "confirmPublish without requestPublish is a no-op")
@@ -267,13 +267,13 @@ final class DraftEditorViewModelTests: XCTestCase {
     func testNextVersionNumberIsOneForNewRecipeAndResolvedForEdits() async throws {
         let fresh = makeModel(draft: try AuthoringFixtures.emptyDraft(), service: FakeRecipeService())
         XCTAssertEqual(fresh.nextVersionNumber, 1)
-        XCTAssertEqual(fresh.publishConfirmationTitle, "Publish version 1?")
+        XCTAssertEqual(fresh.publishConfirmationTitle, "Publish this recipe?")
 
         let service = FakeRecipeService()
         service.detailHandler = { _ in try AuthoringFixtures.detail() }   // version_number 2
         let edit = makeModel(draft: try AuthoringFixtures.draft(), service: service)
         XCTAssertNil(edit.nextVersionNumber)
-        XCTAssertEqual(edit.publishConfirmationTitle, "Publish a new version?")
+        XCTAssertEqual(edit.publishConfirmationTitle, "Publish your changes?")
         await edit.resolveNextVersionNumber()
         XCTAssertEqual(edit.nextVersionNumber, 3)
         XCTAssertEqual(edit.previewDetail().versionNumber, 3)

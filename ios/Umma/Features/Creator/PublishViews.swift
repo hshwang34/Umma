@@ -24,7 +24,7 @@ struct PublishConfirmationSheet: View {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.danger)
-                    .accessibilityLabel("Publish failed: \(message)")
+                    .accessibilityLabel("Couldn’t publish: \(message)")
             }
             Spacer(minLength: 0)
             switch model.publishPhase {
@@ -72,7 +72,7 @@ struct PublishedView: View {
                 .foregroundStyle(SLColor.success)
                 .accessibilityHidden(true)
             VStack(spacing: Spacing.sm) {
-                Text("Published version \(result.versionNumber)")
+                Text(result.versionNumber == 1 ? "Your recipe is published" : "Your changes are published")
                     .font(SLFont.title)
                     .foregroundStyle(SLColor.textPrimary)
                     .accessibilityAddTraits(.isHeader)
@@ -80,7 +80,7 @@ struct PublishedView: View {
                 Text(title.isEmpty ? "Your recipe is live in Explore." : "“\(title)” is live in Explore.")
                     .font(SLFont.body)
                     .foregroundStyle(SLColor.textSecondary)
-                Text("This version can’t change. Editing creates version \(result.versionNumber + 1).")
+                Text("You can edit it any time. Anyone already cooking keeps the recipe they started.")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.textSecondary)
             }
@@ -163,7 +163,7 @@ struct DraftPreviewView: View {
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 Text("Draft preview")
                     .font(SLFont.headline)
-                Text("Not published. This is how version \(detail.versionNumber) will look once you publish it.")
+                Text("Not published yet. This is how it will look.")
                     .font(SLFont.footnote)
             }
         }

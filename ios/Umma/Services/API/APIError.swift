@@ -34,7 +34,7 @@ enum APIError: Error, Equatable, Sendable {
         case .unreachable(let baseURL, _):
             return "Can’t reach the server at \(baseURL). Is the backend running?"
         case .unauthorized(let message, _):
-            return message ?? "Your session ended. Please sign in again."
+            return message ?? "You’ve been signed out. Sign in again to continue."
         case .server(_, _, let message, _, _, _):
             return message
         case .http(let status, _):
@@ -51,13 +51,13 @@ enum APIError: Error, Equatable, Sendable {
         case .noServerConfigured, .invalidURL, .unreachable:
             return Self.connectionMessage
         case .unauthorized(let message, _):
-            return message ?? "Your session ended. Please sign in again."
+            return message ?? "You’ve been signed out. Sign in again to continue."
         case .server(_, _, let message, _, _, _):
             return message.isEmpty ? Self.genericMessage : message
         case .http:
             return "Something went wrong on our side. Try again in a moment."
         case .decoding:
-            return "Umma couldn’t read the server’s reply. Updating the app may fix it."
+            return "Something didn’t load properly. Updating Umma may fix it."
         case .cancelled:
             return "Cancelled."
         }

@@ -160,7 +160,7 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         confirm.tap()
 
         // Success screen with share link
-        XCTAssertTrue(app.staticTexts["Published version 1"].waitForExistence(timeout: 15), "publish did not succeed")
+        XCTAssertTrue(app.staticTexts["Your recipe is published"].waitForExistence(timeout: 15), "publish did not succeed")
         XCTAssertTrue(app.buttons["published.share"].exists)
         attach(app, "7-published")
         app.buttons["published.done"].tap()

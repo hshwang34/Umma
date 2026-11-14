@@ -39,7 +39,7 @@ struct DraftEditorView: View {
         Form {
             if model.isPublishedReadOnly {
                 Section {
-                    Label("This draft was published and is read-only. Open the recipe and tap Edit to start a new version.", systemImage: "lock.fill")
+                    Label("This draft is already published. To change the recipe, open it and tap Edit.", systemImage: "lock.fill")
                         .font(SLFont.footnote)
                         .foregroundStyle(SLColor.warning)
                 }
@@ -111,7 +111,7 @@ struct DraftEditorView: View {
             Button("Discard unsaved changes", role: .destructive) { dismiss() }
             Button("Keep editing", role: .cancel) {}
         } message: {
-            Text("The draft on the server still has what was saved last time.")
+            Text("Everything up to your last save is safe.")
         }
     }
 
@@ -211,8 +211,6 @@ struct DraftEditorView: View {
             problemRows(model.sectionProblems("ingredients"))
         } header: {
             Text("Ingredients")
-        } footer: {
-            Text("Swipe to delete. Tap Reorder (top right) to move ingredients and steps.")
         }
     }
 
@@ -255,8 +253,8 @@ struct DraftEditorView: View {
             Text("Steps")
         } footer: {
             Text(review == nil
-                 ? "Steps are numbered in the order shown. Everything here is labelled “Creator instructions”."
-                 : "Steps are numbered in the order shown. Publishing marks AI-drafted steps as checked by you.")
+                 ? "People cooking this see these steps as your own instructions."
+                 : "Publishing marks AI-drafted steps as checked by you.")
         }
     }
 

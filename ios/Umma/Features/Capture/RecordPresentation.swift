@@ -22,7 +22,7 @@ struct NewRecipeOption: Identifiable, Equatable {
                         detail: "Cook and talk. Umma listens, asks the odd question at a pause, and writes the recipe for you to check.",
                         symbolName: "waveform", isEnabled: true, badge: nil),
         NewRecipeOption(kind: .recordCamera, title: "Record with camera",
-                        detail: "Planned: film the cook so Umma can see the steps too.",
+                        detail: "Coming later: film yourself cooking so Umma can see the steps too.",
                         symbolName: "video", isEnabled: false, badge: "Coming soon"),
         NewRecipeOption(kind: .typeIn, title: "Type it in",
                         detail: "Write the title, ingredients and steps yourself.",

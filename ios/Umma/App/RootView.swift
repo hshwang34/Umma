@@ -8,7 +8,7 @@ struct RootView: View {
         Group {
             switch environment.auth.state {
             case .restoring:
-                ProgressView("Restoring session…")
+                ProgressView("Signing you in…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(SLColor.background)
             case .signedOut:
