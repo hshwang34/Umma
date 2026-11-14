@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -18,7 +18,12 @@ from app.core.errors import (
     VoiceNotEntitled,
     VoiceUnavailable,
 )
-from app.core.security import CurrentUser, SettingsDep, verify_access_token_claims
+from app.core.security import (
+    CurrentUser,
+    SettingsDep,
+    limit_costly,
+    verify_access_token_claims,
+)
 from app.db.models import User
 from app.domains.users import service as users_service
 from app.domains.users.schemas import entitlement_for
@@ -130,6 +135,7 @@ class SpeakIn(BaseModel):
 
 @router.post(
     "/voice/speak",
+    dependencies=[Depends(limit_costly)],
     response_class=StreamingResponse,
     responses={200: {"content": {"audio/pcm": {}}, "description": "s16le mono PCM"}},
 )

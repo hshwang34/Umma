@@ -9,15 +9,20 @@ Four budgets, each per minute, each from settings (``0`` switches one off, refus
 * sign-in routes, per IP: guessing and token-replay attempts;
 * every ``/v1`` route, per IP: anonymous scraping and floods;
 * every authenticated route, per user;
-* writes on the AI, media and capture routes (``COSTLY_PATHS``), per user: the calls that
-  cost money or storage. Reads there, such as polling a job, only count as ordinary requests.
+* writes on routes that spend money, storage or provider calls, per user. Those routes (or
+  their whole router) are marked with ``Depends(limit_costly)`` from ``app/core/security.py``;
+  ``tests/integration/test_rate_limits.py`` fails when a new write route is not classified.
+
+The table of counters is bounded. When it is full only idle keys are evicted; if every key is
+still active, new keys are refused (fail closed) and existing counters are never reset, so a
+flood from many addresses cannot un-throttle anyone.
 
 Over a budget the answer is the standard envelope: 429 ``RATE_LIMITED``, ``retryable: true``.
 """
 
 from __future__ import annotations
 
-import re
+import ipaddress
 import time
 import uuid
 from collections import deque
@@ -31,16 +36,10 @@ from app.core.config import Settings
 from app.core.errors import RateLimited
 
 WINDOW_SECONDS = 60.0
-# Sweep idle keys once the table is this big, so many distinct IPs cannot grow it forever.
+# The most keys one limiter tracks. Full: idle keys are evicted, else new keys are refused.
 MAX_KEYS = 20_000
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 UNLIMITED_PATHS = frozenset({"/v1/health"})  # Fly's health check must never be throttled
-COSTLY_PATHS = re.compile(
-    r"^/v1/(?:ai|media|capture|substitutions|voice)/"
-    r"|^/v1/pantry/(?:observations|receipts|live-scans)(?:/|$)"
-    r"|^/v1/sessions/[^/]+/(?:ask|inspect)$"
-    r"|^/v1/recipes/drafts/[^/]+/(?:cover/upload-intents|steps/[^/]+/trim)$"
-)
 
 TOO_MANY_REQUESTS = "Too many requests. Try again in a minute."
 TOO_MANY_SIGN_INS = "Too many sign-in attempts. Try again in a minute."
@@ -49,9 +48,16 @@ TOO_MANY_SIGN_INS = "Too many sign-in attempts. Try again in a minute."
 class WindowLimiter:
     """At most ``limit`` hits per key per sliding minute. ``limit <= 0`` allows everything."""
 
-    def __init__(self, limit: int, *, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        limit: int,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        max_keys: int = MAX_KEYS,
+    ) -> None:
         self.limit = limit
         self._clock = clock
+        self._max_keys = max_keys
         self._hits: dict[Hashable, deque[float]] = {}
 
     def allow(self, key: Hashable) -> bool:
@@ -60,8 +66,12 @@ class WindowLimiter:
         now = self._clock()
         hits = self._hits.get(key)
         if hits is None:
-            if len(self._hits) >= MAX_KEYS:
-                self._sweep(now)
+            if len(self._hits) >= self._max_keys:
+                self._evict_idle(now)
+                if len(self._hits) >= self._max_keys:
+                    # Every tracked key is active. Refuse the new one rather than forget
+                    # anybody's count: clearing here would let a flood lift every limit.
+                    return False
             hits = self._hits[key] = deque()
         while hits and now - hits[0] >= WINDOW_SECONDS:
             hits.popleft()
@@ -70,13 +80,11 @@ class WindowLimiter:
         hits.append(now)
         return True
 
-    def _sweep(self, now: float) -> None:
+    def _evict_idle(self, now: float) -> None:
+        """Drop keys with no hit inside the window: forgetting them changes no decision."""
         idle = [k for k, hits in self._hits.items() if not hits or now - hits[-1] >= WINDOW_SECONDS]
         for key in idle:
             del self._hits[key]
-        if len(self._hits) >= MAX_KEYS:
-            # Every key is active: a flood from many addresses. Start over rather than grow.
-            self._hits.clear()
 
 
 @dataclass
@@ -96,16 +104,37 @@ class RateLimits:
         )
 
 
+def _bucket(address: str | None) -> str | None:
+    """The rate-limit key for an address, or ``None`` when it is not an IP address.
+
+    IPv4: the address. IPv6: its /64, because one customer is routinely given a whole /64 and
+    could otherwise present 2^64 different keys. An IPv4-mapped IPv6 address counts as IPv4."""
+    try:
+        ip = ipaddress.ip_address((address or "").strip())
+    except ValueError:
+        return None
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return str(ip)
+
+
 def client_ip(request: HTTPConnection) -> str:
-    """The caller's address. Behind Fly the peer is Fly's proxy, so ``CLIENT_IP_HEADER`` names
-    the header the proxy sets itself (``Fly-Client-IP``; a caller cannot forge it). Without the
-    setting, or the header, it is the peer address."""
+    """The caller's rate-limit key.
+
+    Behind Fly the socket peer is Fly's proxy, so ``CLIENT_IP_HEADER`` names the header the
+    proxy sets itself (``Fly-Client-IP``; a caller cannot forge it). The header is read only
+    when that setting is configured, and only when its value is a real IP address: anything
+    else falls back to the socket peer, never to the header text. ``X-Forwarded-For`` and
+    every other forwarding header are never read."""
     settings: Settings = request.app.state.settings
     if settings.client_ip_header:
-        forwarded = request.headers.get(settings.client_ip_header, "").strip()
-        if forwarded:
-            return forwarded[:64]
-    return request.client.host if request.client else "unknown"
+        forwarded = _bucket(request.headers.get(settings.client_ip_header))
+        if forwarded is not None:
+            return forwarded
+    peer = request.client.host if request.client else None
+    return _bucket(peer) or f"peer:{peer or 'unknown'}"
 
 
 def _limits(request: HTTPConnection) -> RateLimits:
@@ -129,12 +158,11 @@ async def limit_sign_in(request: Request) -> None:
 
 def check_user(request: Request, user_id: uuid.UUID) -> None:
     """Called once per authenticated request, right after the token resolves to a user."""
-    limits = _limits(request)
-    if not limits.user.allow(user_id):
+    if not _limits(request).user.allow(user_id):
         raise RateLimited(TOO_MANY_REQUESTS)
-    if (
-        request.method not in SAFE_METHODS
-        and COSTLY_PATHS.search(request.url.path)
-        and not limits.costly_user.allow(user_id)
-    ):
+
+
+def check_costly(request: Request, user_id: uuid.UUID) -> None:
+    """Called by ``limit_costly`` for a write on a route that spends money or storage."""
+    if request.method not in SAFE_METHODS and not _limits(request).costly_user.allow(user_id):
         raise RateLimited(TOO_MANY_REQUESTS)

@@ -9,7 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
-from app.core.ratelimit import COSTLY_PATHS, MAX_KEYS, WINDOW_SECONDS, WindowLimiter
+from app.core.ratelimit import WINDOW_SECONDS, RateLimits, WindowLimiter, _bucket
 from app.main import create_app
 from tests.conftest import bearer
 
@@ -55,40 +55,54 @@ def test_window_limiter_counts_per_key_and_recovers_after_the_window() -> None:
     assert limiter.allow("a")
 
 
-def test_window_limiter_zero_is_off_and_the_table_is_bounded() -> None:
+def test_window_limiter_zero_is_off() -> None:
     assert all(WindowLimiter(0).allow("a") for _ in range(50))
+
+
+def test_a_full_table_evicts_only_idle_keys() -> None:
     now = [0.0]
-    limiter = WindowLimiter(5, clock=lambda: now[0])
-    for key in range(MAX_KEYS):
-        limiter.allow(key)
+    limiter = WindowLimiter(5, clock=lambda: now[0], max_keys=100)
+    for key in range(100):
+        assert limiter.allow(key)
     now[0] = WINDOW_SECONDS + 1
-    limiter.allow("new")
-    assert len(limiter._hits) == 1  # idle keys were swept
+    assert limiter.allow("new")  # everything else is idle, so there is room again
+    assert len(limiter._hits) == 1
+
+
+def test_a_flood_of_new_keys_never_lifts_an_existing_limit() -> None:
+    now = [0.0]
+    limiter = WindowLimiter(2, clock=lambda: now[0], max_keys=50)
+    assert limiter.allow("victim") and limiter.allow("victim")
+    assert not limiter.allow("victim")  # throttled
+    flood = [limiter.allow(f"flood-{n}") for n in range(500)]
+    # The table filled up; later new keys are refused (fail closed) instead of clearing it.
+    assert flood[:49] == [True] * 49
+    assert not any(flood[49:])
+    assert len(limiter._hits) == 50
+    assert not limiter.allow("victim")  # still throttled
+    assert limiter.allow("flood-0")  # keys already in the table keep their own budget
+    # Once the flood goes quiet, new callers are served again.
+    now[0] = WINDOW_SECONDS + 1
+    assert limiter.allow("newcomer")
 
 
 @pytest.mark.parametrize(
-    "path, costly",
+    "address, bucket",
     [
-        ("/v1/ai/live-token", True),
-        ("/v1/media/upload-intents", True),
-        ("/v1/capture/sessions", True),
-        ("/v1/pantry/receipts", True),
-        ("/v1/pantry/observations", True),
-        ("/v1/pantry/live-scans/abc/items", True),
-        ("/v1/sessions/abc/ask", True),
-        ("/v1/sessions/abc/inspect", True),
-        ("/v1/substitutions/suggest", True),
-        ("/v1/voice/speak", True),
-        ("/v1/recipes/drafts/abc/cover/upload-intents", True),
-        ("/v1/sessions/abc/commands", False),
-        ("/v1/pantry", False),
-        ("/v1/pantry/abc", False),
-        ("/v1/recipes/drafts/abc", False),
-        ("/v1/me", False),
+        ("203.0.113.7", "203.0.113.7"),
+        (" 203.0.113.7 ", "203.0.113.7"),
+        ("2001:db8:1:2:aaaa::1", "2001:db8:1:2::/64"),
+        ("2001:db8:1:2:ffff:ffff:ffff:ffff", "2001:db8:1:2::/64"),
+        ("2001:db8:1:3::1", "2001:db8:1:3::/64"),
+        ("::ffff:203.0.113.7", "203.0.113.7"),
+        ("203.0.113.7, 10.0.0.1", None),
+        ("not-an-address", None),
+        ("", None),
+        (None, None),
     ],
 )
-def test_costly_paths(path: str, costly: bool) -> None:
-    assert bool(COSTLY_PATHS.search(path)) is costly
+def test_address_buckets(address: str | None, bucket: str | None) -> None:
+    assert _bucket(address) == bucket
 
 
 # --- sign-in, per IP -------------------------------------------------------------------------
@@ -146,6 +160,35 @@ async def test_spoofed_headers_are_ignored_when_no_header_is_configured(
         _assert_limited(await client.get("/v1/recipes", headers=headers))
 
 
+async def test_ipv6_callers_share_a_bucket_per_64(settings: Settings) -> None:
+    async with _client(
+        settings, rate_limit_per_ip_per_minute=2, client_ip_header="Fly-Client-IP"
+    ) as client:
+        for host in ("1", "2"):
+            headers = {"Fly-Client-IP": f"2001:db8:aa:bb::{host}"}
+            assert (await client.get("/v1/recipes", headers=headers)).status_code == 200
+        # A third address in the same /64 is the same customer.
+        same = {"Fly-Client-IP": "2001:db8:aa:bb:1234:5678:9abc:def0"}
+        _assert_limited(await client.get("/v1/recipes", headers=same))
+        # A different /64 is not.
+        other = {"Fly-Client-IP": "2001:db8:aa:cc::1"}
+        assert (await client.get("/v1/recipes", headers=other)).status_code == 200
+
+
+async def test_a_garbage_client_ip_header_is_never_used_as_a_key(settings: Settings) -> None:
+    async with _client(
+        settings, rate_limit_per_ip_per_minute=2, client_ip_header="Fly-Client-IP"
+    ) as client:
+        # Each value is different, so if the text were the key every call would pass.
+        for value in ("garbage-1", "203.0.113.7, 10.0.0.1"):
+            response = await client.get("/v1/recipes", headers={"Fly-Client-IP": value})
+            assert response.status_code == 200
+        _assert_limited(await client.get("/v1/recipes", headers={"Fly-Client-IP": "garbage-3"}))
+        limits: RateLimits = client._transport.app.state.rate_limits  # type: ignore[attr-defined]
+        assert all("garbage" not in str(key) for key in limits.ip._hits)
+        assert len(limits.ip._hits) == 1  # the socket peer
+
+
 async def test_health_is_never_limited(settings: Settings) -> None:
     async with _client(settings, rate_limit_per_ip_per_minute=1) as client:
         for _ in range(5):
@@ -178,7 +221,129 @@ async def test_costly_writes_have_their_own_tighter_user_budget(settings: Settin
         _assert_limited(await client.post("/v1/substitutions/suggest", json=body, headers=alice))
         # Ordinary routes, and reads on costly routers, are not in that budget.
         assert (await client.get("/v1/me", headers=alice)).status_code == 200
-        assert (await client.get("/v1/pantry", headers=alice)).status_code == 200
+        assert (await client.get("/v1/pantry/live-scans/nope", headers=alice)).status_code != 429
+        assert (await client.post("/v1/pantry", json={}, headers=alice)).status_code != 429
         bob = await bearer(client, "bob@example.com")
         other = await client.post("/v1/substitutions/suggest", json=body, headers=bob)
         assert other.status_code != 429
+        # Without a valid token the costly marker does nothing: the route answers 401.
+        anonymous = await client.post("/v1/substitutions/suggest", json=body)
+        assert anonymous.status_code == 401
+
+
+# Every write route, classified. COSTLY spends money, storage or a provider call (AI, voice,
+# extraction, receipts, live tokens, upload intents, uploaded callbacks, publish) and must be
+# marked with ``Depends(limit_costly)``. A new write route fails the test below until it is
+# added to one of the sets, so the question "does this cost something?" is always asked.
+COSTLY_WRITES = {
+    ("POST", "/v1/ai/live-token"),
+    ("POST", "/v1/capture/sessions"),
+    ("DELETE", "/v1/capture/sessions/{session_id}"),
+    ("POST", "/v1/capture/sessions/{session_id}/commands"),
+    ("POST", "/v1/capture/sessions/{session_id}/finish"),
+    ("POST", "/v1/capture/sessions/{session_id}/generate"),
+    ("POST", "/v1/capture/sessions/{session_id}/questions/{question_id}"),
+    ("POST", "/v1/capture/sessions/{session_id}/turns"),
+    ("POST", "/v1/media/upload-intents"),
+    ("POST", "/v1/media/{media_id}/uploaded"),
+    ("DELETE", "/v1/media/{media_id}"),
+    ("POST", "/v1/pantry/live-scans"),
+    ("POST", "/v1/pantry/live-scans/{scan_id}/finish"),
+    ("POST", "/v1/pantry/live-scans/{scan_id}/items"),
+    ("DELETE", "/v1/pantry/live-scans/{scan_id}/items/{key}"),
+    ("POST", "/v1/pantry/observations"),
+    ("POST", "/v1/pantry/receipts"),
+    ("POST", "/v1/pantry/receipts/{receipt_id}/undo"),
+    ("POST", "/v1/recipes/drafts/{draft_id}/cover/upload-intents"),
+    ("POST", "/v1/recipes/drafts/{draft_id}/cover/{media_id}/uploaded"),
+    ("POST", "/v1/recipes/drafts/{draft_id}/publish"),
+    ("POST", "/v1/recipes/drafts/{draft_id}/steps/{step_id}/trim"),
+    ("POST", "/v1/sessions/{session_id}/ask"),
+    ("POST", "/v1/sessions/{session_id}/inspect"),
+    ("POST", "/v1/substitutions/suggest"),
+    ("POST", "/v1/voice/speak"),
+}
+ORDINARY_WRITES = {
+    ("PUT", "/v1/creators/{creator_id}/follow"),
+    ("DELETE", "/v1/creators/{creator_id}/follow"),
+    ("PATCH", "/v1/me"),
+    ("POST", "/v1/me/onboarding/complete"),
+    ("PUT", "/v1/me/preferences"),
+    ("POST", "/v1/pantry"),
+    ("PATCH", "/v1/pantry/{item_id}"),
+    ("DELETE", "/v1/pantry/{item_id}"),
+    ("POST", "/v1/pantry/{item_id}/confirm"),
+    ("DELETE", "/v1/recipe-versions/{version_id}/my-variation"),
+    ("POST", "/v1/recipe-versions/{version_id}/fit"),
+    ("POST", "/v1/recipes/drafts"),
+    ("PATCH", "/v1/recipes/drafts/{draft_id}"),
+    ("DELETE", "/v1/recipes/drafts/{draft_id}"),
+    ("DELETE", "/v1/recipes/drafts/{draft_id}/cover"),
+    ("POST", "/v1/recipes/{recipe_id}/edit"),
+    ("POST", "/v1/recipes/{recipe_id}/save"),
+    ("DELETE", "/v1/recipes/{recipe_id}/save"),
+    ("POST", "/v1/recipes/{recipe_id}/unpublish"),
+    ("POST", "/v1/sessions"),
+    ("DELETE", "/v1/sessions/{session_id}"),
+    ("POST", "/v1/sessions/{session_id}/commands"),
+    ("POST", "/v1/sessions/{session_id}/notes"),
+    ("POST", "/v1/shopping-list"),
+    ("DELETE", "/v1/shopping-list/{item_id}"),
+    ("POST", "/v1/shopping-list/{item_id}/check"),
+    ("POST", "/v1/shopping-list/{item_id}/uncheck"),
+}
+# Sign-in routes have their own per-IP budget (limit_sign_in) and no user yet.
+SIGN_IN_WRITES = {
+    ("POST", "/v1/auth/dev-login"),
+    ("POST", "/v1/auth/dev-login/verify"),
+}
+MONEY_WORDS = (
+    "/ai/",
+    "/voice/",
+    "upload",
+    "/publish",
+    "extract",
+    "generate",
+    "receipt",
+    "live-",
+    "/ask",
+    "/inspect",
+    "/trim",
+    "observations",
+    "suggest",
+)
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
+
+
+async def test_every_write_route_is_classified_and_costly_ones_are_limited(
+    settings: Settings,
+) -> None:
+    async with _client(settings, rate_limit_costly_per_user_per_minute=1) as client:
+        app = client._transport.app  # type: ignore[attr-defined]
+        writes = {
+            (method.upper(), path)
+            for path, operations in app.openapi()["paths"].items()
+            for method in operations
+            if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+        }
+        assert not (COSTLY_WRITES & ORDINARY_WRITES)
+        assert writes == COSTLY_WRITES | ORDINARY_WRITES | SIGN_IN_WRITES
+        # Nothing that sounds like it spends money may sit in the ordinary set.
+        assert not [r for r in ORDINARY_WRITES if any(word in r[1] for word in MONEY_WORDS)]
+
+        headers = await bearer(client, "alice@example.com")
+        limits: RateLimits = app.state.rate_limits
+
+        async def second_call_status(method: str, template: str) -> int:
+            limits.costly_user._hits.clear()
+            path = template.replace("{key}", "egg").replace("{step_id}", "s1")
+            for name in template.split("{")[1:]:
+                path = path.replace("{" + name.split("}")[0] + "}", NIL_UUID)
+            first = await client.request(method, path, headers=headers)
+            assert first.status_code != 429, (method, template)
+            return (await client.request(method, path, headers=headers)).status_code
+
+        for method, template in sorted(COSTLY_WRITES):
+            assert await second_call_status(method, template) == 429, (method, template)
+        for method, template in sorted(ORDINARY_WRITES):
+            assert await second_call_status(method, template) != 429, (method, template)

@@ -118,6 +118,23 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+async def limit_costly(
+    request: Request,
+    settings: SettingsDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> None:
+    """Marks a route, or a whole router, as one that spends money, storage or provider calls
+    (brief 010): its writes also count against the tighter per-user costly budget. Reads are
+    free. It never authenticates: without a valid token the route's own auth answers 401."""
+    if credentials is None or credentials.scheme.lower() != TOKEN_TYPE:
+        return
+    try:
+        user_id = verify_access_token(settings, credentials.credentials)
+    except Unauthorized:
+        return
+    ratelimit.check_costly(request, user_id)
+
+
 async def get_optional_user(
     request: Request,
     session: DbSession,

@@ -146,6 +146,16 @@ moves behind a different proxy, change this to the header *that* proxy overwrite
 limit, the app answers 429 `RATE_LIMITED` and the phone can retry after a minute. Counters
 reset on every deploy or restart.
 
+- IPv4 callers are counted per address; IPv6 callers per /64 (one home or phone line).
+- A header value that is not an IP address is ignored and the socket address is used.
+- Each limiter tracks at most 20,000 callers. When full it drops only callers idle for a
+  minute; if all are active it refuses *new* callers (429) until some go idle. It never
+  resets existing counters, so a flood cannot lift anyone's limit. A burst of 429s for new
+  testers together with a traffic spike in `fly logs` is this guard working.
+- "Costly" writes (AI, voice, receipts, live scan, capture, media upload and uploaded
+  callbacks, publish, clip trim) are marked in code with `Depends(limit_costly)`; a test fails
+  when a new write route is not classified.
+
 Seed the catalogue (ingredient dictionary, substitution rules, the demo recipes and creators).
 Idempotent; re-run after any deploy that changes `fixtures/`:
 
