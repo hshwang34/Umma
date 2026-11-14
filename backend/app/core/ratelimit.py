@@ -178,6 +178,9 @@ class RateLimits:
     ip: IpLimiter
     user: WindowLimiter
     costly_user: WindowLimiter
+    # Review login (brief 010 PR 3): attempts per IP, and across every caller together.
+    review_ip: IpLimiter
+    review_total: WindowLimiter
 
     @classmethod
     def from_settings(cls, settings: Settings) -> RateLimits:
@@ -186,6 +189,8 @@ class RateLimits:
             ip=IpLimiter(settings.rate_limit_per_ip_per_minute),
             user=WindowLimiter(settings.rate_limit_per_user_per_minute),
             costly_user=WindowLimiter(settings.rate_limit_costly_per_user_per_minute),
+            review_ip=IpLimiter(settings.rate_limit_review_login_per_ip_per_minute),
+            review_total=WindowLimiter(settings.rate_limit_review_login_total_per_minute),
         )
 
 
@@ -251,3 +256,11 @@ def check_costly(request: Request, user_id: uuid.UUID) -> None:
     """Called by ``limit_costly`` for a write on a route that spends money or storage."""
     if request.method not in SAFE_METHODS and not _limits(request).costly_user.allow(user_id):
         raise RateLimited(TOO_MANY_REQUESTS)
+
+
+def check_review_login(request: Request) -> None:
+    """Every review-login attempt, right or wrong, spends the caller's and the global budget,
+    so the code cannot be guessed at speed from one address or from many."""
+    limits = _limits(request)
+    if not limits.review_ip.allow(client_ip(request)) or not limits.review_total.allow("all"):
+        raise RateLimited(TOO_MANY_SIGN_INS)

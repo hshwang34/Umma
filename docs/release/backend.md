@@ -80,6 +80,7 @@ the repo, a PR or a log.
 | `GEMINI_API_KEY` | Coach, pantry photos, receipts, video extraction, live scan. Paid-tier key from the personal Cloud project (DECISIONS #19). Also needs `AI_PROVIDER=gemini`. | With `AI_PROVIDER=mock` every AI answer is the labelled demo path. |
 | `GOOGLE_IOS_CLIENT_ID` | iOS OAuth client id for Sign in with Google (DECISIONS #33). Not secret, but set here so it is in one place. | `POST /v1/auth/google` does not exist. |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Sign in with Apple key, used to exchange the sign-in authorization code for a refresh token (stored encrypted) and to revoke it when the person deletes their account (App Review guideline 5.1.1(v)). Team ID `V56DG94ZL5`; the key ID and `.p8` come from the developer portal (Keys → Sign in with Apple). Set the key with `APPLE_PRIVATE_KEY="$(cat AuthKey_XXXXXXXXXX.p8)"` and keep the `.p8` out of the repo. | Sign-in and account deletion still work; the Apple revoke is skipped and logged. **Set these before the external beta.** |
+| `REVIEW_LOGIN_CODE` | The secret code for Apple's Beta App Review login (section 10). At least 20 characters. | `POST /v1/auth/review` does not exist. |
 | `PEXELS_API_KEY` | Stock cover photo after a first publish (brief 019). | Recipes without a cover stay without one. |
 | `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | Paid server voice (brief 012). Also needs `PAID_VOICE_ENABLED=true`, which needs the PM's go (DECISIONS #26). | Voice stays on the phone. |
 
@@ -233,7 +234,41 @@ sessions, drafts, recordings' transcripts, recipes, and every video, clip and co
   `JWT_SECRET` makes stored tokens unreadable: later deletions skip the revoke until the
   person signs in again.
 
-## 10. Not done here
+## 10. Review login (Beta App Review)
+
+Apple's reviewers cannot use Sign in with Apple with a personal account, so production has
+one extra way in while a build is in review: `POST /v1/auth/review` with body
+`{"code": "<secret>"}`, answering the same token response as the other sign-ins.
+
+- It signs in as **one fixed account** ("App Review"). That account is an ordinary user: it
+  sees only its own pantry, sessions and recipes, plus the public catalogue. It can delete
+  itself (reviewers test account deletion); the next review login makes a fresh one.
+- The route exists **only while `REVIEW_LOGIN_CODE` is set**. Unset, it is a 404.
+- Wrong codes get one indistinguishable 401. Attempts are limited to 5 per minute per address
+  and 30 per minute in total (plus the general sign-in limit), then 429. The code is compared
+  in constant time and never logged.
+
+Turn it on before submitting a build for review:
+
+```bash
+CODE="$(openssl rand -base64 24)"; echo "$CODE"      # copy it; it is not shown again
+fly secrets set REVIEW_LOGIN_CODE="$CODE" --app umma-api
+```
+
+Put the code in App Store Connect → the build's **Test Information → Beta App Review
+Information → Sign-in required** (and the review notes), with one line on where to enter it
+in the app. Never put it in the repo, a PR, a screenshot or the public site.
+
+Turn it off when review is done, and rotate it for each new review:
+
+```bash
+fly secrets unset REVIEW_LOGIN_CODE --app umma-api   # the route is gone after the restart
+```
+
+If the code leaks: unset or replace it at once. Anyone holding it could only ever reach the
+review account's own sandbox data, never a tester's.
+
+## 11. Not done here
 
 - No custom API domain: the app uses `https://<app>.fly.dev`.
 - No staging app. Test risky changes locally with `make check` and the docker build above.
