@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     # or error bodies, and it never leaves the backend. Each capability has its own model so a
     # price or quality change can be made per feature; ids are re-verified at build time.
     gemini_api_key: SecretStr | None = None
+    # Brief 019 stock photos. Optional: without a key, Pexels lookups are skipped. A SecretStr,
+    # so it never appears in reprs or logs; it is only sent in Pexels' Authorization header.
+    pexels_api_key: SecretStr | None = None
+    pexels_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     gemini_model_coach: str = "gemini-3.8-flash"
     gemini_model_inspect: str = "gemini-3.8-flash"
     gemini_model_substitution: str = "gemini-3.8-flash"
