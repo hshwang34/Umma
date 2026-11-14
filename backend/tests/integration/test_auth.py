@@ -72,6 +72,7 @@ async def test_challenge_then_verify_creates_user_and_me_returns_it(
         "entitlement",
         "onboarded_at",
         "role",
+        "default_servings",
     }
     assert body["user"]["display_name"] == "tester"
     assert body["user"]["preference_units"] == "us"

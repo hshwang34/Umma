@@ -139,7 +139,13 @@ class TimerStatus(enum.StrEnum):
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("auth_provider", "auth_subject"),)
+    __table_args__ = (
+        UniqueConstraint("auth_provider", "auth_subject"),
+        CheckConstraint(
+            "default_servings IS NULL OR default_servings BETWEEN 1 AND 6",
+            name="default_servings_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     auth_provider: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -155,6 +161,8 @@ class User(TimestampMixin, Base):
     # Public creator profile fields (brief 015). Shown on creator pages and follow suggestions.
     bio: Mapped[str | None] = mapped_column(String(280))
     avatar_url: Mapped[str | None] = mapped_column(String(2048))
+    # Brief 020: servings every recipe opens scaled to. Null means "the recipe's own".
+    default_servings: Mapped[int | None] = mapped_column(Integer)
 
 
 class Follow(CreatedAtMixin, Base):
