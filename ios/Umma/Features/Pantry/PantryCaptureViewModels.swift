@@ -397,7 +397,7 @@ struct ScanCaptureCopy: Equatable {
     static let shelf = ScanCaptureCopy(
         navigationTitle: "Scan",
         title: "Scan a shelf or the fridge",
-        explainer: "The camera turns on only when you tap it and stops right after the photo. The photo is analysed once and not kept. You’ll review every item before anything is added.",
+        explainer: "The camera is on only while you take the photo. Umma reads the photo once and doesn’t keep it. You review every item before it’s added.",
         submitTitle: "Find items")
 
     static let receipt = ScanCaptureCopy(

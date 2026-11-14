@@ -42,7 +42,7 @@ final class ScanReviewViewModelTests: XCTestCase {
         XCTAssertTrue(model.showsDemoBanner)
         XCTAssertEqual(model.unknowns, ["contents of the unlabeled jar"])
         XCTAssertEqual(model.rows.map(\.accepted), [false, false, false], "demo candidates start unticked")
-        XCTAssertEqual(model.blockingMessage, "Tick at least one item to add.")
+        XCTAssertEqual(model.blockingMessage, "Select at least one item to add.")
         XCTAssertTrue(model.rows[1].isEstimate, "photo count is an estimate")
         model.setQuantityText(1, "6")
         XCTAssertFalse(model.rows[1].isEstimate, "a number the user typed is not an estimate")
@@ -170,14 +170,14 @@ final class ScanReviewViewModelTests: XCTestCase {
         let model = ScanReviewViewModel(observation: try photoObservation(), existingItems: [], service: FakePantryService())
         tickPhotoRows(model)
         model.setName(0, "   ")
-        XCTAssertEqual(model.rows[0].problem, "Add a name or untick this item.")
+        XCTAssertEqual(model.rows[0].problem, "Add a name, or deselect this item.")
         XCTAssertEqual(model.blockingMessage, "Fix the highlighted items first.")
         model.setName(0, "Gochujang")
         model.setQuantityText(1, "lots")
         XCTAssertFalse(model.canConfirm)
         model.setAccepted(0, false)
         model.setAccepted(1, false)
-        XCTAssertEqual(model.blockingMessage, "Tick at least one item to add.")
+        XCTAssertEqual(model.blockingMessage, "Select at least one item to add.")
     }
 
     func testRealProviderPhotoKeepsBinDefaults() throws {

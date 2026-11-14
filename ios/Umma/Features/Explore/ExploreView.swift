@@ -192,7 +192,7 @@ private struct ExploreContent: View {
             systemImage: filter == .canMakeNow ? "basket" : "line.3.horizontal.decrease.circle",
             title: filter == .canMakeNow ? "Nothing you can make yet" : "No \(filter.title.lowercased()) recipes",
             message: filter == .canMakeNow
-                ? "Add what’s on the shelf in Pantry and we’ll show what fits."
+                ? "Add what you have in Pantry to see what you can make."
                 : "Try another filter, or see everything.",
             primary: EmptyStateView.Action("Show all recipes") { filter = .all }
         )
@@ -203,8 +203,8 @@ private struct ExploreContent: View {
         if model.query.isEmpty, model.feed == .following {
             EmptyStateView(
                 systemImage: "person.2",
-                title: "Nobody followed yet",
-                message: "Tap a cook’s name on any recipe to see their page and follow them. Their recipes land here.",
+                title: "You’re not following anyone yet",
+                message: "Tap a cook’s name on any recipe to follow them. Their recipes show up here.",
                 primary: EmptyStateView.Action("Browse For You") { model.feed = .forYou }
             )
         } else {
@@ -232,12 +232,12 @@ private struct ExploreContent: View {
             Image(systemName: "clock.arrow.circlepath")
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Spacing.xxs) {
-                Text("Showing cached recipes")
+                Text("Showing recipes from earlier")
                     .font(SLFont.headline)
                 Text(notice)
                     .font(SLFont.footnote)
                 if let at = model.cachedAt {
-                    Text("Saved \(at, style: .relative) ago")
+                    Text("Updated \(at, style: .relative) ago")
                         .font(SLFont.caption)
                 }
             }

@@ -55,7 +55,7 @@ final class ShoppingListTests: XCTestCase {
         XCTAssertEqual(model.phase, .loaded)
         XCTAssertEqual(model.rows.map(\.name), ["milk", "eggs"])
         XCTAssertEqual(model.rows.map(\.isChecked), [false, true])
-        XCTAssertEqual(model.rows.map(\.detail), ["Missing for a recipe", "Bought. Ticked off by a receipt"])
+        XCTAssertEqual(model.rows.map(\.detail), ["Missing for a recipe", "Bought. Crossed off by a receipt"])
         XCTAssertEqual(model.summary, "1 item to buy")
         XCTAssertEqual(model.rows[0].accessibilityLabel, "milk, Missing for a recipe, To buy")
     }
@@ -88,7 +88,7 @@ final class ShoppingListTests: XCTestCase {
         await model.toggle(id: milk)
         XCTAssertEqual(service.calls.last, .check(milk))
         XCTAssertEqual(model.rows[0].detail, "Bought")
-        XCTAssertEqual(model.summary, "Everything is ticked off")
+        XCTAssertEqual(model.summary, "Everything’s crossed off")
         await model.toggle(id: milk)
         XCTAssertEqual(service.calls.last, .uncheck(milk))
         XCTAssertFalse(model.rows[0].isChecked)

@@ -14,7 +14,7 @@ struct ShoppingRowPresentation: Identifiable, Equatable {
         name = item.rawLabel
         isChecked = item.isChecked
         if item.isChecked {
-            detail = item.checkedBy == "receipt" ? "Bought. Ticked off by a receipt" : "Bought"
+            detail = item.checkedBy == "receipt" ? "Bought. Crossed off by a receipt" : "Bought"
         } else {
             switch item.reason {
             case .missing: detail = "Missing for a recipe"
@@ -73,7 +73,7 @@ final class ShoppingListViewModel {
     var summary: String {
         let open = items.filter { !$0.isChecked }.count
         if items.isEmpty { return "Nothing on your list" }
-        if open == 0 { return "Everything is ticked off" }
+        if open == 0 { return "Everything’s crossed off" }
         return open == 1 ? "1 item to buy" : "\(open) items to buy"
     }
 

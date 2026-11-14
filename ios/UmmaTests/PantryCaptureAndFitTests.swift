@@ -350,7 +350,7 @@ final class PantryFitViewModelTests: XCTestCase {
         let (model, _) = try makeModel(fit: PantryFixtures.canMakeFitJSON)
         await model.load()
         XCTAssertTrue(model.canMake)
-        XCTAssertEqual(model.headline, "Can make it")
+        XCTAssertEqual(model.headline, "You can make this")
         XCTAssertNil(model.subheadline)
         XCTAssertEqual(model.coverageText, "1 of 1 ingredients")
 
@@ -359,7 +359,7 @@ final class PantryFitViewModelTests: XCTestCase {
         let (cautious, _) = try makeModel(fit: contradictory)
         await cautious.load()
         XCTAssertFalse(cautious.canMake)
-        XCTAssertNotEqual(cautious.headline, "Can make it")
+        XCTAssertNotEqual(cautious.headline, "You can make this")
     }
 
     func testUncertainOnlyHeadline() async throws {

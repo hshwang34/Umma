@@ -28,7 +28,7 @@ final class Slice2ReviewGateTests: XCTestCase {
         XCTAssertNil(result)
         XCTAssertTrue(service.calls.isEmpty, "rejecting all candidates must not call the server")
         XCTAssertNil(model.confirmed)
-        XCTAssertEqual(model.error, "Tick at least one item to add.")
+        XCTAssertEqual(model.error, "Select at least one item to add.")
     }
 
     func testNothingIsWrittenUntilConfirmIsCalled() throws {
@@ -352,7 +352,7 @@ final class Slice2FitGateTests: XCTestCase {
         let vm = try model(json)
         await vm.load()
         XCTAssertFalse(vm.canMake)
-        XCTAssertNotEqual(vm.headline, "Can make it")
+        XCTAssertNotEqual(vm.headline, "You can make this")
     }
 
     func testServerCanMakeFalseIsNeverUpgradedEvenIfEveryRowIsAvailable() async throws {

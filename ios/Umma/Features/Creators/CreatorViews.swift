@@ -108,7 +108,7 @@ struct FollowingListView: View {
                                    primary: EmptyStateView.Action("Try again") { Task { await model.load() } })
                 case .loaded where model.creators.isEmpty:
                     EmptyStateView(systemImage: "person.2", title: "Not following anyone yet",
-                                   message: "Open a recipe and tap the cook’s name to see their page and follow them.")
+                                   message: "Tap a cook’s name on any recipe to follow them.")
                 case .loaded:
                     list(model)
                 }
