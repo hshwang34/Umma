@@ -48,7 +48,7 @@ struct SignInView: View {
                     #else
                     appleStep
                     #endif
-                    serverFooter
+                    if BuildConfig.allowsServerOverride { serverFooter }
                 }
                 .padding(Spacing.screen)
             }
@@ -58,7 +58,7 @@ struct SignInView: View {
                 NavigationStack { ServerSettingsView() }
             }
         }
-        .task { await probeServer() }
+        .task { if BuildConfig.allowsServerOverride { await probeServer() } }
     }
 
     private var brand: some View {
