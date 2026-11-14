@@ -91,6 +91,18 @@ class PantrySource(enum.StrEnum):
     RECEIPT = "receipt"  # auto-saved from a grocery receipt photo (brief 017)
 
 
+class ShoppingReason(enum.StrEnum):
+    MISSING = "missing"  # a recipe needed it and the pantry didn't have it
+    RAN_OUT = "ran_out"
+    NO_SUBSTITUTE = "no_substitute"
+    MANUAL = "manual"
+
+
+class ShoppingCheckedBy(enum.StrEnum):
+    USER = "user"
+    RECEIPT = "receipt"  # ticked off by a grocery receipt (brief 017)
+
+
 class StorageLocation(enum.StrEnum):
     FRIDGE = "fridge"
     FREEZER = "freezer"
@@ -706,6 +718,50 @@ class PantryReceipt(CreatedAtMixin, Base):
     result_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
+class ShoppingItem(TimestampMixin, Base):
+    """One line of the in-app shopping list (brief 017, DECISIONS #29). An item is open until
+    ``checked_at`` is set. The partial unique index allows one open item per owner and normalised
+    name; checked items are history and never block a new open one."""
+
+    __tablename__ = "shopping_items"
+    __table_args__ = (
+        Index(
+            "uq_shopping_items_open_name",
+            "owner_user_id",
+            "normalized_name",
+            unique=True,
+            postgresql_where=text("checked_at IS NULL"),
+        ),
+        CheckConstraint(
+            "(checked_at IS NULL) = (checked_by IS NULL)", name="checked_at_and_by_together"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    raw_label: Mapped[str] = mapped_column(String(200), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # NULL for anything outside the ingredient dictionary: a person may buy anything.
+    ingredient_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ingredients.id", ondelete="SET NULL")
+    )
+    reason: Mapped[ShoppingReason] = mapped_column(
+        _enum(ShoppingReason, "shopping_reason"), nullable=False
+    )
+    source_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("cooking_sessions.id", ondelete="SET NULL")
+    )
+    source_recipe_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_versions.id", ondelete="SET NULL")
+    )
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_by: Mapped[ShoppingCheckedBy | None] = mapped_column(
+        _enum(ShoppingCheckedBy, "shopping_checked_by")
+    )
+
+
 class PantryLiveScanItem(CreatedAtMixin, Base):
     """One deduplicated basket item: one row per normalised key per scan."""
 
@@ -1047,6 +1103,7 @@ OWNED_TABLES: tuple[type[Base], ...] = (
     RecipeMedia,
     PantryItem,
     PantryObservation,
+    ShoppingItem,
     CookingSession,
     MediaConsent,
     RecipeVariation,
