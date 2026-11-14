@@ -36,9 +36,24 @@ enum PaidVoiceError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .server(_, let message): message
-        case .unreachable: "No connection to Umma's server, so voice runs on this iPhone."
+        case .unreachable: PaidVoiceTransport.offlineNotice
         case .notSignedIn: "Sign in again to use server voice."
         }
+    }
+}
+
+extension PaidVoiceError {
+    /// A non-200 `/speak` answer. A 5xx, 401 or 403 always ends server voice for the session, so
+    /// unless its envelope names one of the session refusals it reads as `HTTP_<status>` (a
+    /// proxy's bare 502, or a 500 with any other code) and the line is said on-device instead.
+    static func speakRefusal(status: Int, envelope: APIErrorEnvelope.Body?) -> PaidVoiceError {
+        let message = envelope?.message ?? PaidVoiceTransport.offlineNotice
+        if let code = envelope?.code, PaidVoiceTransport.fallbackCodes.contains(code) {
+            return .server(code: code, message: message)
+        }
+        let endsSession = status >= 500 || status == 401 || status == 403
+        let code = endsSession ? "HTTP_\(status)" : (envelope?.code ?? "HTTP_\(status)")
+        return .server(code: code, message: message)
     }
 }
 
@@ -77,8 +92,8 @@ enum PaidVoiceServerMessage: Equatable, Sendable {
                                startMs: wire.startMs ?? 0, endMs: wire.endMs ?? 0)
         case "speech_started": return .speechStarted(atMs: wire.atMs ?? 0)
         case "utterance_end": return .utteranceEnd(lastWordEndMs: wire.lastWordEndMs ?? 0)
-        case "ai_resting": return .aiResting(message: wire.message ?? "AI is resting, so voice runs on this iPhone for now.")
-        case "error": return .error(code: wire.code ?? "ERROR", message: wire.message ?? "No connection to Umma's server, so voice runs on this iPhone.")
+        case "ai_resting": return .aiResting(message: wire.message ?? PaidVoiceTransport.restingNotice)
+        case "error": return .error(code: wire.code ?? "ERROR", message: wire.message ?? PaidVoiceTransport.offlineNotice)
         case "closed": return .closed(reason: wire.reason ?? "closed")
         default: return nil
         }
@@ -124,8 +139,7 @@ struct HTTPPaidVoiceServer: PaidVoiceServer {
             var body = Data()
             for try await byte in bytes.prefix(4096) { body.append(byte) }
             let envelope = try? JSONCoding.makeDecoder().decode(APIErrorEnvelope.self, from: body)
-            throw PaidVoiceError.server(code: envelope?.error.code ?? "HTTP_\(http.statusCode)",
-                                        message: envelope?.error.message ?? "No connection to Umma's server, so voice runs on this iPhone.")
+            throw PaidVoiceError.speakRefusal(status: http.statusCode, envelope: envelope?.error)
         }
         let rate = Double(http.value(forHTTPHeaderField: "X-Audio-Sample-Rate") ?? "") ?? 24_000
         let chunks = AsyncThrowingStream<Data, Error> { continuation in
