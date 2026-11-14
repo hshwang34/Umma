@@ -156,7 +156,7 @@ final class DATGlassesController: GlassesController {
         for attempt in 0..<40 {
             guard snapshot.registration == .registered else { return }
             do {
-                let status = try await wearables.checkPermissionStatus(.camera)
+                let status = try await withDeadline(.seconds(10)) { try await wearables.checkPermissionStatus(.camera) }
                 applyPermission(GlassesStateMapping.permission(status))
                 return
             } catch {

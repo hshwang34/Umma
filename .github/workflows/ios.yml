@@ -24,4 +24,17 @@ jobs:
         run: |
           SIM_OS=$(ios/scripts/sim-os.sh "iPhone 16")
           case "$SIM_OS" in 26.*) ;; *) echo "::error::iPhone 16 runtime is '$SIM_OS'; the glasses tests need iOS 26 (MWDATCore crashes the test host on iOS 17)"; exit 1 ;; esac
-          make ios-check-glasses SIM="iPhone 16"
+          status=0
+          make ios-check-glasses SIM="iPhone 16" XCB_QUIET= GLASSES_RESULT="$RUNNER_TEMP/glasses.xcresult" \
+            > "$RUNNER_TEMP/glasses.log" 2>&1 || status=$?
+          grep -E "Test Case|Test Suite|error:|Executed|\*\* TEST|Testing failed|crash" "$RUNNER_TEMP/glasses.log" || true
+          exit $status
+      - name: Upload glasses test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glasses-xcresult
+          path: |
+            ${{ runner.temp }}/glasses.xcresult
+            ${{ runner.temp }}/glasses.log
+          if-no-files-found: ignore

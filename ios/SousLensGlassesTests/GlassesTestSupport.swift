@@ -4,7 +4,7 @@ import XCTest
 
 /// Polls on the main actor until `condition` holds (DAT callbacks hop through `Task { @MainActor }`).
 @MainActor
-func waitUntil(_ description: String, timeout: TimeInterval = 20, file: StaticString = #filePath, line: UInt = #line,
+func waitUntil(_ description: String, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line,
                _ condition: @MainActor () -> Bool) async {
     let deadline = Date().addingTimeInterval(timeout)
     while !condition() {

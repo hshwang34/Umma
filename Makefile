@@ -54,12 +54,18 @@ ios-check-no-dat: ios-project
 
 # The PM-only glasses flavour: builds SousLensGlasses (DAT 1.0.1) and runs its MockDeviceKit tests.
 # GLASSES_SHOTS=<folder> also writes the Settings → Glasses / source picker screenshots there.
+# Every test is time-boxed (a hung MockDeviceKit/DAT await fails that test by name instead of
+# stalling the run). CI sets XCB_QUIET= and GLASSES_RESULT=<path> to keep a named log + .xcresult.
 GLASSES_SHOTS ?=
+GLASSES_RESULT ?=
+XCB_QUIET ?= -quiet
 ios-check-glasses: ios-project
 	cd ios && xcodebuild test -project SousLens.xcodeproj -scheme SousLensGlasses \
 		-destination 'platform=iOS Simulator,name=$(SIM),OS=$(SIM_OS)' \
+		-test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
+		$(if $(GLASSES_RESULT),-resultBundlePath "$(GLASSES_RESULT)") \
 		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
-		SOUSLENS_GLASSES_SHOTS="$(GLASSES_SHOTS)" -quiet
+		SOUSLENS_GLASSES_SHOTS="$(GLASSES_SHOTS)" $(XCB_QUIET)
 
 # Live smoke: fresh install → two-step dev sign-in (code read from the backend log) → seeded
 # recipe. Needs `make backend-dev` running with its log at SMOKE_LOG (default below).

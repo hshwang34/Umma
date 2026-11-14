@@ -83,7 +83,11 @@ final class GlassesCameraSource: CameraSource, FramePreviewProviding {
 
         let status: PermissionStatus
         do {
-            status = try await wearables.checkPermissionStatus(.camera)
+            // Bounded: a glasses that never answers must not leave "Starting camera…" up forever.
+            let wearables = self.wearables
+            status = try await withDeadline(startTimeout) {
+                try await wearables.checkPermissionStatus(.camera)
+            }
         } catch {
             try await superseded(unless: token)
             throw abortStart(.failed("Couldn’t check the glasses camera permission."),
@@ -296,6 +300,22 @@ final class GlassesCameraSource: CameraSource, FramePreviewProviding {
         previewFrame = nil
         if !keepIssue { failure = nil }
         setPhase(.idle)
+    }
+}
+
+struct GlassesDeadlineExceeded: Error {}
+
+/// Runs `operation`, giving up with `GlassesDeadlineExceeded` after `limit`.
+func withDeadline<T: Sendable>(_ limit: Duration, _ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(for: limit)
+            throw GlassesDeadlineExceeded()
+        }
+        defer { group.cancelAll() }
+        guard let first = try await group.next() else { throw GlassesDeadlineExceeded() }
+        return first
     }
 }
 
