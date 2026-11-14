@@ -190,7 +190,7 @@ async def test_user_daily_cap_falls_back_to_labelled_demo(
     versions = await seed(db_session)
     alice = await bearer(gclient, "alice@example.com")
     bob = await bearer(gclient, "bob@example.com")
-    await spend(db_session, "0.24", await user_id(db_session, "alice@example.com"))
+    await spend(db_session, "0.49", await user_id(db_session, "alice@example.com"))
     session = await active(gclient, alice, versions[CUKE])
     r = await ask(gclient, alice, session, "how big should the pieces be?")
     assert r.status_code == 200, r.text
@@ -283,9 +283,9 @@ async def test_reservations_are_atomic_under_concurrency(
     results = await asyncio.gather(
         *(guard.reserve(uid, "coach", "gemini-3.8-flash", Decimal("0.06")) for _ in range(10))
     )
-    assert sum(isinstance(r, Reservation) for r in results) == 4  # 4 x 0.06 <= 0.25 < 5 x 0.06
+    assert sum(isinstance(r, Reservation) for r in results) == 8  # 8 x 0.06 <= 0.50 < 9 x 0.06
     assert all(r.reason == "user_daily_cap" for r in results if isinstance(r, Denial))
-    assert len(await ledger(db_session)) == 4
+    assert len(await ledger(db_session)) == 8
 
 
 async def test_month_hard_stop_is_atomic_across_users(
