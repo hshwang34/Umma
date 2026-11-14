@@ -212,6 +212,56 @@ final class ReceiptTests: XCTestCase {
         XCTAssertEqual(ScanCaptureViewModel(camera: FakeCameraSource(), service: pantry).copy, .shelf)
     }
 
+    /// Review fix A: the sheet closes (or is torn down) while "Read receipt" is in flight. The
+    /// server saves the items anyway, so the Pantry screen must still get the banner, Undo and list.
+    func testAReceiptReadThatFinishesAfterTheSheetClosedStillReachesThePantry() async throws {
+        let receipts = FakeReceiptService()
+        let expected = try ReceiptFixtures.result()
+        receipts.readHandler = { _ in expected }
+        let gate = AsyncGate()
+        let capture = ScanCaptureViewModel(camera: FakeCameraSource(), service: FakePantryService(), receipts: receipts,
+                                           encode: { data in
+                                               await gate.wait()
+                                               return PantryPhotoUpload(jpegData: data, pixelWidth: 1, pixelHeight: 1)
+                                           })
+        let pantry = PantryViewModel(service: FakePantryService(), receipts: receipts)
+        var changed = 0
+        pantry.onChanged = { changed += 1 }
+        capture.onReceipt = { pantry.noteReceipt($0) }
+        XCTAssertFalse(capture.blocksDismissal)
+        await capture.usePickedPhoto(jpeg)
+
+        let reading = Task { await capture.findItems() }
+        await gate.waitUntilWaiting()
+        XCTAssertTrue(capture.blocksDismissal, "Cancel and swipe-down are off while the photo is being read")
+        // What the sheet's onDisappear does, if it were closed anyway.
+        await capture.tearDown()
+        XCTAssertNil(pantry.receiptBanner)
+        await gate.open()
+        await reading.value
+
+        XCTAssertFalse(capture.blocksDismissal)
+        XCTAssertEqual(pantry.receiptBanner?.title, "Added 1 item from your receipt")
+        XCTAssertEqual(pantry.receiptBanner?.canUndo, true, "Undo is there")
+        XCTAssertEqual(pantry.rows.map(\.name), ["Milk", "Onions"], "the list shows the new items")
+        XCTAssertEqual(changed, 1)
+        await pantry.undoReceipt()
+        XCTAssertEqual(receipts.undone, [ReceiptFixtures.receiptId])
+    }
+
+    func testAFailedReadDeliversNothingAndUnblocksTheSheet() async {
+        let receipts = FakeReceiptService()
+        receipts.readHandler = { _ in throw APIError.http(status: 500, correlationId: nil) }
+        let capture = ScanCaptureViewModel(camera: FakeCameraSource(), service: FakePantryService(), receipts: receipts,
+                                           encode: { PantryPhotoUpload(jpegData: $0, pixelWidth: 1, pixelHeight: 1) })
+        var delivered = 0
+        capture.onReceipt = { _ in delivered += 1 }
+        await capture.usePickedPhoto(jpeg)
+        await capture.findItems()
+        XCTAssertEqual(delivered, 0)
+        XCTAssertFalse(capture.blocksDismissal, "the cook can leave after a failure")
+    }
+
     func testAFailedReceiptReadKeepsThePhotoForRetry() async {
         let receipts = FakeReceiptService()
         receipts.readHandler = { _ in throw APIError.server(status: 503, code: "PROVIDER_UNAVAILABLE", message: "x",

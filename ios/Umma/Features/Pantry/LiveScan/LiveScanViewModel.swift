@@ -83,6 +83,9 @@ final class LiveScanViewModel {
         case interrupted
         /// Couldn't start (camera, server, connection). "Keep scanning" retries.
         case failed
+        /// The app went to the background: camera off, session closed, timer stopped. The basket
+        /// is kept. Nothing resumes on its own; "Keep scanning" is the cook's tap.
+        case paused
         case finishing
         case finished
         case cancelled
@@ -155,8 +158,15 @@ final class LiveScanViewModel {
 
     /// Drives the visible "Scanning" indicator; read from the source, never assumed.
     var cameraOn: Bool { camera.activeIndicator }
-    var canContinue: Bool { phase == .timeUp || phase == .interrupted || phase == .failed }
-    var canFinish: Bool { scanID != nil && [.starting, .scanning, .timeUp, .limitReached, .interrupted, .failed].contains(phase) }
+    var canContinue: Bool { phase == .timeUp || phase == .interrupted || phase == .failed || phase == .paused }
+    var canFinish: Bool { scanID != nil && [.starting, .scanning, .timeUp, .limitReached, .interrupted, .failed, .paused].contains(phase) }
+    /// The save is on its way to the server: the sheet must not be closed until it answers.
+    var blocksDismissal: Bool { phase == .finishing }
+    /// Called once when Done has saved, whether or not the sheet is still on screen: the
+    /// auto-added items are in the pantry by then, so the Pantry screen must hear about it.
+    var onFinished: (@MainActor (LiveScanResultPresentation) -> Void)?
+
+    static let pausedMessage = "The camera turned off when you left Umma. Your basket is kept. Keep scanning, or tap Done to check your list."
 
     // MARK: - Start, stop
 
@@ -209,6 +219,13 @@ final class LiveScanViewModel {
         }
     }
 
+    /// The app went to the background while the camera was looking (or coming up). Capture is
+    /// user-initiated and visible, so it stops here and stays stopped when the app returns.
+    func pauseForBackground() async {
+        guard phase == .starting || phase == .scanning else { return }
+        await stop(.paused, Self.pausedMessage)
+    }
+
     /// Stops the camera and frames, closes the session, then saves: high-confidence new items go
     /// to the pantry, the rest come back for review.
     func finish() async {
@@ -219,8 +236,10 @@ final class LiveScanViewModel {
         do {
             let finished = try await service.finishLiveScan(scanID: scanID)
             guard phase == .finishing else { return }
-            result = LiveScanResultPresentation(finished)
+            let presentation = LiveScanResultPresentation(finished)
+            result = presentation
             phase = .finished
+            onFinished?(presentation)
         } catch {
             guard phase == .finishing else { return }
             phase = .interrupted

@@ -44,6 +44,8 @@ struct LiveScanScreenPresentation: Equatable {
             title = "That’s all the live scanning for today"
         case .interrupted:
             title = "The scan stopped"
+        case .paused:
+            title = "Scanning paused"
         case .failed:
             title = permissionDenied ? "Umma can’t use the camera" : "The scan didn’t start"
         case .finishing:
