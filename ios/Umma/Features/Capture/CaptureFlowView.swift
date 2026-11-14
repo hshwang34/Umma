@@ -18,7 +18,14 @@ final class CaptureFlow: Identifiable {
 extension AppEnvironment {
     /// A capture run on the voice transport the user's tier calls for.
     func makeCaptureFlow(resuming record: CaptureJournalRecord? = nil) -> CaptureFlow {
-        let coordinator = CaptureCoordinator(api: api, makeVoice: { self.makeVoiceSession(config: $0) }, userId: auth.user?.id)
+        var makeVoice: (VoiceSessionConfig) -> VoiceSession = { self.makeVoiceSession(config: $0) }
+        #if DEBUG
+        // UI walkthrough only (`-capture.script kimchi`): a scripted cook instead of the mic.
+        if let name = UserDefaults.standard.string(forKey: "capture.script"), let scripted = ScriptedVoiceTransport.named(name) {
+            makeVoice = { VoiceSession(transport: scripted, config: $0) }
+        }
+        #endif
+        let coordinator = CaptureCoordinator(api: api, makeVoice: makeVoice, userId: auth.user?.id)
         return CaptureFlow(coordinator: coordinator,
                            generator: CaptureDraftGenerator(api: api, coordinator: coordinator),
                            resumeRecord: record)
