@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pantry Icon Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: four icon directions side by side, each shown in a real pantry row, plus a large swatch strip. Tokens are the Umma brand kit (docs/brand/README.md). */
+:root {
+  --flesh:#FFF1E6; --surface:#FFFAF5; --seed:#2A1C14; --muted:#6E5A4E; --line:#EBD9CB;
+  --persimmon:#F2782A; --persimmon-deep:#D85F17; --persimmon-soft:#FFDCC2; --leaf:#2F6B3A; --leaf-soft:#E3EFDF;
+  --amber:#E89A2E; --tan:#8A5A3C; --cream:#FFE9D2;
+  --display:"Bagel Fat One", "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+  --text:"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --rounded: ui-rounded, "SF Pro Rounded", "Inter", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --flesh:#1B130E; --surface:#271C16; --seed:#F6E9DE; --muted:#C2AE9F; --line:#3C2E26;
+  --persimmon:#FF8A3D; --persimmon-deep:#FF9C57; --persimmon-soft:#4A2814; --leaf:#8ED39A; --leaf-soft:#203626;
+  --amber:#F2AE4A; --tan:#C79270; --cream:#FFDCC2; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --flesh:#1B130E; --surface:#271C16; --seed:#F6E9DE; --muted:#C2AE9F; --line:#3C2E26;
+  --persimmon:#FF8A3D; --persimmon-deep:#FF9C57; --persimmon-soft:#4A2814; --leaf:#8ED39A; --leaf-soft:#203626;
+  --amber:#F2AE4A; --tan:#C79270; --cream:#FFDCC2; color-scheme: dark; }
+* { box-sizing:border-box }
+html, body { margin:0 }
+body { background:var(--flesh); color:var(--seed); font:16px/1.55 var(--text); }
+.wrap { max-width:1280px; margin:0 auto; padding-left:max(20px, env(safe-area-inset-left,0px)); padding-right:max(20px, env(safe-area-inset-right,0px)); padding-block:44px 72px; }
+h1, h2 { font-family:var(--display); font-weight:400; line-height:1.05; margin:0; text-wrap:balance }
+h1 { font-size:clamp(40px, 7vw, 72px) }
+h2 { font-size:26px }
+.lede { color:var(--muted); max-width:64ch; margin:14px 0 0; font-size:18px }
+.bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:22px }
+.bar button { font:600 14px var(--text); padding:8px 16px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--seed); cursor:pointer }
+.bar button[aria-pressed="true"] { background:var(--leaf); color:var(--flesh); border-color:var(--leaf) }
+.bar button:focus-visible { outline:3px solid var(--persimmon); outline-offset:2px }
+.grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px; margin-top:34px }
+.opt { display:flex; flex-direction:column; gap:14px; min-width:0 }
+.opt header { display:flex; gap:12px; align-items:center }
+.letter { font-family:var(--display); font-size:24px; width:42px; height:42px; border-radius:50%; display:grid; place-items:center; background:var(--seed); color:var(--flesh); flex:none }
+.pick { font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--leaf) }
+.strip { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; padding:16px; background:var(--surface); border:1px solid var(--line); border-radius:18px }
+.strip svg { width:100%; height:auto; max-width:56px; justify-self:center }
+.card { background:var(--surface); border-radius:22px; padding:6px 16px; border:1px solid var(--line) }
+.row { display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:12px; align-items:center; padding-block:11px; border-bottom:1px solid var(--line) }
+.row:last-child { border-bottom:0 }
+.row svg { width:34px; height:34px; justify-self:center }
+.name { font-weight:600; font-size:16px; line-height:1.2; overflow-wrap:anywhere }
+.sub { font-size:12.5px; color:var(--muted) }
+.qty { font-family:var(--rounded); font-size:15px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap }
+dl { margin:0; font-size:14px }
+dt { font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-top:8px }
+dd { margin:2px 0 0 }
+.how { margin-top:52px; padding-top:30px; border-top:3px solid var(--seed); display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:28px }
+.how p, .how li { max-width:62ch }
+.how ul { padding-left:1.2em; margin:8px 0 0 }
+.how li { margin-bottom:6px }
+.note { font-size:13px; color:var(--muted); margin-top:40px }
+@media (max-width:1100px) { .grid { grid-template-columns:repeat(2, minmax(0,1fr)) } }
+@media (max-width:640px) { .grid, .how { grid-template-columns:minmax(0,1fr) } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Pantry icons</h1>
+  <p class="lede">Four directions drawn from the Umma brand kit, each applied to the same eight ingredients from a real pantry. These are rough sketches to choose a style, not finished art.</p>
+  <div class="bar" role="group" aria-label="Preview theme">
+    <button type="button" id="t-light" aria-pressed="false">Light</button>
+    <button type="button" id="t-dark" aria-pressed="false">Dark</button>
+    <button type="button" id="t-system" aria-pressed="true">Match my system</button>
+  </div>
+  <div class="grid" id="grid"></div>
+
+  <section class="how">
+    <div>
+      <h2>My recommendation</h2>
+      <p><b>A, Persimmon flat,</b> for pantry rows. It's the only one drawn the way the logo is drawn: flat fills in brand colours, no outlines, details cut out of the shape. Put it next to the app icon and it looks like the same family.</p>
+      <p>B is the safe fallback if A turns out too busy in long lists. It's the quietest and the closest to Apple's own icons, but it carries the brand only through colour.</p>
+    </div>
+    <div>
+      <h2>What making the set takes</h2>
+      <ul>
+        <li><b>How many:</b> about 60 icons for the most common ingredients, plus 14 for the food categories (produce, herb, protein, condiment and so on). Anything without its own icon uses its category's.</li>
+        <li><b>Format:</b> vector assets in the app's asset catalog. Styles B and C can be tinted by iOS like Apple's own icons. Style A ships in fixed colours, with a second version for dark mode.</li>
+        <li><b>Who draws them:</b> you, a designer, or generated with an AI image tool and then redrawn into clean vectors. All three follow one written style guide: a 32-point grid, rounded corners and the brand colours.</li>
+        <li><b>Code:</b> one small backend PR adds an icon name to each ingredient. A second, iOS-only PR draws the icon in the pantry row, Pantry fit and Swaps.</li>
+      </ul>
+    </div>
+  </section>
+  <p class="note">These sketches are drawn in plain SVG. Final icons would get proper optical balancing at 20, 28 and 34 points.</p>
+</main>
+
+<script>
+(function () {
+  // Each ingredient: shapes (fillable, with a colour role) and lines (cut = detail cut out of the fill, leafline = green line).
+  const I = {
+    garlic: { name:"garlic", qty:"1 head", cat:"produce",
+      shapes:[["cream","M16 6C16 6 14 9 12 10C8 12 6 15 6 19C6 24 10 27 16 27C22 27 26 24 26 19C26 15 24 12 20 10C18 9 16 6 16 6Z"]],
+      lines:[["cut","M16 12C14 15 13.5 21 14.5 26.5"],["cut","M16 12C18 15 18.5 21 17.5 26.5"],["leafline","M16 6.5L16 3"]] },
+    onion: { name:"onions", qty:"2", cat:"produce",
+      shapes:[["deep","M16 7C10 10 6 14 6 19C6 24 10.5 27 16 27C21.5 27 26 24 26 19C26 14 22 10 16 7Z"]],
+      lines:[["cut","M16 9.5C12.5 13 11.8 21 13 26.5"],["cut","M16 9.5C19.5 13 20.2 21 19 26.5"],["leafline","M16 7C15.2 4.8 15.8 3.2 17.6 2.6"]] },
+    chicken: { name:"chicken thighs", qty:"2 lb", cat:"protein",
+      shapes:[["persimmon","M20 4.5C25 4.5 28 8.5 27.5 13C27 17.5 22.5 20 18.5 19C16 18.5 13.5 16 13 13.5C12.5 8.5 15.5 4.5 20 4.5Z"],
+              ["cream","M15.6 16.2L17.6 18.2L10.6 25.2L8.6 23.2Z"],
+              ["cream","M4.6 22.6a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0 -4.8 0Z"],["cream","M8.2 26.2a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0 -4.8 0Z"]],
+      lines:[["cut","M18 8.5C20 7.6 22.4 7.8 24 9.2"]] },
+    gochujang: { name:"gochujang", qty:"3 tbsp", cat:"condiment",
+      shapes:[["persimmon","M7 12.5L25 12.5L23.4 25.6C23.3 26.5 22.6 27 21.8 27L10.2 27C9.4 27 8.7 26.5 8.6 25.6Z"],
+              ["leaf","M6 10C6 8.9 6.9 8 8 8L24 8C25.1 8 26 8.9 26 10L26 12.5L6 12.5Z"]],
+      lines:[["cut","M11.5 18.5L20.5 18.5"],["cut","M12.5 22L19.5 22"]] },
+    honey: { name:"honey", qty:"", cat:"condiment",
+      shapes:[["amber","M9.5 11C8.1 11 7 12.1 7 13.5L7 24C7 25.7 8.3 27 10 27L22 27C23.7 27 25 25.7 25 24L25 13.5C25 12.1 23.9 11 22.5 11Z"],
+              ["leaf","M9 6L23 6C23.6 6 24 6.4 24 7L24 11L8 11L8 7C8 6.4 8.4 6 9 6Z"]],
+      lines:[["cut","M12 11L12 15.2C12 16.6 14.4 16.6 14.4 15.2L14.4 11"]] },
+    sesame: { name:"sesame oil", qty:"", cat:"oil",
+      shapes:[["amber","M13 6L19 6L19 9.5C19 11 22 12.5 22 15L22 25C22 26.1 21.1 27 20 27L12 27C10.9 27 10 26.1 10 25L10 15C10 12.5 13 11 13 9.5Z"],
+              ["leaf","M12.5 2.5L19.5 2.5L19.5 6L12.5 6Z"]],
+      lines:[["cut","M12.8 18.5L19.2 18.5"],["cut","M12.8 22L17 22"]] },
+    egg: { name:"eggs", qty:"6", cat:"protein",
+      shapes:[["cream","M16 4.5C21 4.5 25 12 25 18.5C25 23.5 21 27 16 27C11 27 7 23.5 7 18.5C7 12 11 4.5 16 4.5Z"]],
+      lines:[["cut","M11.4 16C11.8 13.2 12.8 11 14 9.8"]] },
+    rice: { name:"short-grain rice", qty:"2 cups", cat:"grain",
+      shapes:[["cream","M7 15.5C7 11 11 8 16 8C21 8 25 11 25 15.5Z"],
+              ["leaf","M5 15.5L27 15.5C27 21.8 22 26 16 26C10 26 5 21.8 5 15.5Z"],
+              ["leaf","M12.5 26L19.5 26L18.8 28.5L13.2 28.5Z"]],
+      lines:[["cut","M13 12L14 11.6"],["cut","M17.5 11L18.5 11.4"],["cut","M15.5 13.6L16.5 13.4"]] },
+    basket: { name:"unmatched item", qty:"", cat:"other",
+      shapes:[["tan","M5 13L27 13L24.6 25.4C24.4 26.3 23.7 27 22.7 27L9.3 27C8.3 27 7.6 26.3 7.4 25.4Z"]],
+      lines:[["cut","M12 17L12.6 23"],["cut","M16 17L16 23"],["cut","M20 17L19.4 23"],["stroke","M10 13L14 6.5"],["stroke","M22 13L18 6.5"]] },
+  };
+  const ORDER = ["chicken","garlic","gochujang","honey","onion","sesame","egg","rice"];
+  const STRIP = ["garlic","chicken","gochujang","rice","basket"];
+  const tone = r => ({cream:"var(--cream)", deep:"var(--persimmon-deep)", persimmon:"var(--persimmon)", leaf:"var(--leaf)", amber:"var(--amber)", tan:"var(--tan)"})[r];
+  const catTile = c => ({produce:"var(--leaf)", herb:"var(--leaf)", protein:"var(--persimmon-deep)", condiment:"var(--persimmon)", oil:"var(--amber)", grain:"var(--tan)", other:"var(--tan)"})[c];
+
+  const STYLES = [
+    { id:"A", title:"Persimmon flat", pick:"Recommended",
+      what:"Drawn like the logo: flat two-colour fills in persimmon, leaf and cream, no outlines, details cut out of the fill.",
+      fits:"Closest to the app icon and the persimmon mark. Warm, and it reads at a glance.",
+      cost:"Full colour, so it needs a light and a dark version. That's more work per icon.",
+      svg(k){ const d=I[k]; let s="";
+        d.shapes.forEach(([r,p])=> s+=`<path d="${p}" fill="${tone(r)}"/>`);
+        d.lines.forEach(([r,p])=> s+=`<path d="${p}" fill="none" stroke="${r==="leafline"?"var(--leaf)":r==="stroke"?"var(--tan)":"var(--surface)"}" stroke-width="${r==="cut"?1.6:2}" stroke-linecap="round"/>`);
+        return s; } },
+    { id:"B", title:"Leaf monoline", pick:"Safe fallback",
+      what:"Single-colour line icons in Leaf, with rounded ends and the same stroke weight as Apple's own icons.",
+      fits:"Sits next to the tab bar and buttons without fighting them. The brand shows only through the green.",
+      cost:"The cheapest. One colour, and iOS tints it for dark mode on its own.",
+      svg(k){ const d=I[k]; let s="";
+        d.shapes.forEach(([,p])=> s+=`<path d="${p}" fill="none" stroke="var(--leaf)" stroke-width="1.8" stroke-linejoin="round"/>`);
+        d.lines.forEach(([,p])=> s+=`<path d="${p}" fill="none" stroke="var(--leaf)" stroke-width="1.8" stroke-linecap="round"/>`);
+        return s; } },
+    { id:"C", title:"Category tile", pick:"",
+      what:"A cream glyph cut out of a rounded tile. The tile's colour shows the category: green for produce, persimmon for protein and sauces.",
+      fits:"Chunky like Bagel Fat One. The colour coding makes a long pantry list easy to scan.",
+      cost:"It adds a lot of colour to a list. With 30 items it can feel loud.",
+      tile:true,
+      svg(k){ const d=I[k]; const t=catTile(d.cat); let s=`<rect x="0" y="0" width="32" height="32" rx="9" fill="${t}"/><g transform="translate(5 5) scale(.6875)">`;
+        d.shapes.forEach(([,p])=> s+=`<path d="${p}" fill="var(--flesh)"/>`);
+        d.lines.forEach(([r,p])=> s+=`<path d="${p}" fill="none" stroke="${r==="cut"?t:"var(--flesh)"}" stroke-width="${r==="cut"?2.2:2.6}" stroke-linecap="round"/>`);
+        return s+"</g>"; } },
+    { id:"D", title:"Hand-printed", pick:"",
+      what:"A Seed-coloured outline over a colour fill that's slightly out of register, like a risograph print or a stamp.",
+      fits:"The most personal and playful. It suits the \"recipes from mum\" story.",
+      cost:"Busier at small sizes, and the most work to draw consistently.",
+      svg(k){ const d=I[k]; let s='<g transform="translate(1.4 1.4)">';
+        d.shapes.forEach(([r,p])=> s+=`<path d="${p}" fill="${tone(r)}" opacity=".9"/>`);
+        s+="</g>";
+        d.shapes.forEach(([,p])=> s+=`<path d="${p}" fill="none" stroke="var(--seed)" stroke-width="1.7" stroke-linejoin="round"/>`);
+        d.lines.forEach(([,p])=> s+=`<path d="${p}" fill="none" stroke="var(--seed)" stroke-width="1.6" stroke-linecap="round"/>`);
+        return s; } },
+  ];
+
+  const svg = (st,k,label) => `<svg viewBox="-1 -1 34 34" role="img" aria-label="${label}">${st.svg(k)}</svg>`;
+  const grid = document.getElementById("grid");
+  grid.innerHTML = STYLES.map(st => `
+    <article class="opt">
+      <header><span class="letter">${st.id}</span><div><h2>${st.title}</h2>${st.pick?`<div class="pick">${st.pick}</div>`:""}</div></header>
+      <div class="strip">${STRIP.map(k=>svg(st,k,I[k].name)).join("")}</div>
+      <div class="card">${ORDER.map(k=>`<div class="row">${svg(st,k,"")}<div><div class="name">${I[k].name}</div><div class="sub">Confirmed today</div></div><div class="qty">${I[k].qty}</div></div>`).join("")}</div>
+      <dl><dt>What it is</dt><dd>${st.what}</dd><dt>Brand fit</dt><dd>${st.fits}</dd><dt>Trade-off</dt><dd>${st.cost}</dd></dl>
+    </article>`).join("");
+
+  const root = document.documentElement;
+  const btns = {light:document.getElementById("t-light"), dark:document.getElementById("t-dark"), system:document.getElementById("t-system")};
+  Object.entries(btns).forEach(([mode,b]) => b.addEventListener("click", () => {
+    if (mode==="system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", mode);
+    Object.values(btns).forEach(x => x.setAttribute("aria-pressed", String(x===b)));
+  }));
+})();
+</script>
+</body>
+</html>
