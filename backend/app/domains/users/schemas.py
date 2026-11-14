@@ -96,6 +96,17 @@ class AppleSignInRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=120)
 
 
+class GoogleSignInRequest(BaseModel):
+    """``POST /auth/google`` (brief 010). ``nonce`` is the raw value the phone generated; it
+    sent Google the SHA-256, which Google copies into the ID token. The name comes from the
+    token, never from the request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id_token: str = Field(min_length=20, max_length=8192)
+    nonce: str = Field(min_length=16, max_length=128)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"

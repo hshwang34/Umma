@@ -15,6 +15,7 @@ from app.ai.providers.mock import MockAIProvider
 from app.ai.registry import build_provider
 from app.api.v1 import auth as auth_router
 from app.api.v1 import auth_apple as auth_apple_router
+from app.api.v1 import auth_google as auth_google_router
 from app.api.v1.router import router as v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -22,6 +23,7 @@ from app.core.logging import CorrelationIdMiddleware, configure_logging
 from app.core.security import DevAuthProvider
 from app.db.engine import make_engine, make_sessionmaker
 from app.domains.users.apple import AppleIdentityVerifier, http_key_fetcher
+from app.domains.users.google import GoogleIdentityVerifier
 from app.media.storage import build_storage
 from app.voice.registry import build_stt, build_tts
 from app.voice.speak import SpeakLimiter
@@ -99,6 +101,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fetch_keys=http_key_fetcher(settings.apple_keys_url),
         )
         app.include_router(auth_apple_router.router, prefix="/v1")
+        if settings.google_ios_client_id:
+            # Sign in with Google (DECISIONS #33): only when its iOS client id is configured.
+            app.state.google_verifier = GoogleIdentityVerifier(
+                audience=settings.google_ios_client_id,
+                fetch_keys=http_key_fetcher(settings.google_keys_url),
+            )
+            app.include_router(auth_google_router.router, prefix="/v1")
     return app
 
 
