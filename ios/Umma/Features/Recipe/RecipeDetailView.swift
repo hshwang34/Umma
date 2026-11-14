@@ -323,8 +323,8 @@ enum RecipeCopy {
     static let save = "Save"
     /// The filled bookmark's label: it states what the recipe is, and the hint says a tap removes it.
     static let saved = "Saved"
-    static let unpublishMessage = "It leaves Explore and search. People who have the link, or are already cooking it, can still open it."
-    static let unpublishedNotice = "It’s no longer in Explore or search. People who have the link, or are already cooking it, can still open it."
+    static let unpublishMessage = "It leaves Explore and search. People who saved it, or are already cooking it, can still open it."
+    static let unpublishedNotice = "It’s no longer in Explore or search. People who saved it, or are already cooking it, can still open it."
 }
 
 /// Hero + title block shared by the live detail and the draft preview.
