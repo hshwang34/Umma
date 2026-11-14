@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 
 from app.core.errors import NotFound
-from app.core.security import CurrentUser, SettingsDep
+from app.core.security import CurrentUser, SettingsDep, limit_costly
 from app.db.engine import DbSession
 from app.domains.extraction import jobs
 from app.domains.media import covers
@@ -62,7 +62,10 @@ async def delete_draft(draft_id: str, session: DbSession, user: CurrentUser) -> 
 
 
 @router.post(
-    "/{draft_id}/publish", response_model=PublishResult, status_code=status.HTTP_201_CREATED
+    "/{draft_id}/publish",
+    response_model=PublishResult,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_costly)],
 )
 async def publish_draft(
     draft_id: str,
@@ -88,6 +91,7 @@ async def publish_draft(
 
 @router.post(
     "/{draft_id}/steps/{step_id}/trim",
+    dependencies=[Depends(limit_costly)],
     response_model=jobs.JobOut,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -104,6 +108,7 @@ async def trim_step_clip(
 
 @router.post(
     "/{draft_id}/cover/upload-intents",
+    dependencies=[Depends(limit_costly)],
     response_model=covers.CoverIntentOut,
     status_code=status.HTTP_201_CREATED,
 )
@@ -126,7 +131,11 @@ async def create_cover_intent(
     )
 
 
-@router.post("/{draft_id}/cover/{media_id}/uploaded", response_model=Draft)
+@router.post(
+    "/{draft_id}/cover/{media_id}/uploaded",
+    response_model=Draft,
+    dependencies=[Depends(limit_costly)],
+)
 async def confirm_cover(
     draft_id: str,
     media_id: str,

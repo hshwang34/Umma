@@ -54,6 +54,12 @@ def settings() -> Settings:
         jwt_secret=TEST_JWT_SECRET,
         log_level="WARNING",
         fixtures_dir=FIXTURES_DIR,
+        # Request rate limits are off for the suite; tests/integration/test_rate_limits.py
+        # builds its own apps with small budgets.
+        rate_limit_sign_in_per_ip_per_minute=0,
+        rate_limit_per_ip_per_minute=0,
+        rate_limit_per_user_per_minute=0,
+        rate_limit_costly_per_user_per_minute=0,
         # Never reach a paid voice vendor from tests, even with keys in the environment.
         deepgram_api_key=None,
         elevenlabs_api_key=None,

@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.ai.budget import CostGuard
@@ -16,14 +16,17 @@ from app.ai.registry import build_provider
 from app.api.v1 import auth as auth_router
 from app.api.v1 import auth_apple as auth_apple_router
 from app.api.v1 import auth_google as auth_google_router
+from app.api.v1 import auth_review as auth_review_router
 from app.api.v1.router import router as v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import CorrelationIdMiddleware, configure_logging
+from app.core.ratelimit import RateLimits, limit_sign_in
 from app.core.security import DevAuthProvider
 from app.db.engine import make_engine, make_sessionmaker
 from app.domains.recipes import stock_photos
 from app.domains.users.apple import AppleIdentityVerifier, http_key_fetcher
+from app.domains.users.apple_tokens import build_apple_token_client
 from app.domains.users.google import GoogleIdentityVerifier
 from app.media.storage import build_storage
 from app.voice.registry import build_stt, build_tts
@@ -75,6 +78,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Brief 019: Pexels stock photos after a first publish; None (skipped) without a key.
     app.state.stock_photos = stock_photos.build_client(settings)
     app.state.auth_provider = None
+    # Per-IP and per-user request limits (brief 010), held in this process.
+    app.state.rate_limits = RateLimits.from_settings(settings)
+    sign_in = {"prefix": "/v1", "dependencies": [Depends(limit_sign_in)]}
     # Paid server voice (brief 012 PR 2): None when its key is absent (the routes then refuse).
     app.state.voice_stt = build_stt(settings)
     app.state.voice_streams = StreamLimiter()
@@ -96,21 +102,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.auth_mode == "dev":
         # The dev-login route is only mounted in dev mode; outside it the path does not exist.
         app.state.auth_provider = DevAuthProvider()
-        app.include_router(auth_router.router, prefix="/v1")
+        app.include_router(auth_router.router, **sign_in)
     else:
         # Sign in with Apple (brief 010). Apple's keys are fetched on the first sign-in.
         app.state.apple_verifier = AppleIdentityVerifier(
             audience=settings.apple_bundle_id,
             fetch_keys=http_key_fetcher(settings.apple_keys_url),
         )
-        app.include_router(auth_apple_router.router, prefix="/v1")
+        # Code exchange and revoke for account deletion; None without the Apple key settings.
+        app.state.apple_token_client = build_apple_token_client(settings)
+        app.include_router(auth_apple_router.router, **sign_in)
         if settings.google_ios_client_id:
             # Sign in with Google (DECISIONS #33): only when its iOS client id is configured.
             app.state.google_verifier = GoogleIdentityVerifier(
                 audience=settings.google_ios_client_id,
                 fetch_keys=http_key_fetcher(settings.google_keys_url),
             )
-            app.include_router(auth_google_router.router, prefix="/v1")
+            app.include_router(auth_google_router.router, **sign_in)
+    if settings.review_login_code is not None:
+        # Beta App Review login (brief 010): the path exists only while the secret is set.
+        app.include_router(auth_review_router.router, **sign_in)
     return app
 
 

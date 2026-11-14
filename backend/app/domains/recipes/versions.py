@@ -6,6 +6,7 @@ from typing import TypedDict
 
 from app.db.models import Recipe, RecipeVersion
 from app.domains.recipes.schemas import CoverCredit
+from app.domains.users.deletion import is_former_creator
 from app.media import signing
 
 
@@ -48,6 +49,10 @@ def served_meta(recipe: Recipe, version: RecipeVersion) -> ServedMeta:
     the recipe's stock photo with its credit, else none."""
     meta = version_meta(recipe, version)
     url, credit = meta["cover_image_url"], None
+    if is_former_creator(recipe.owner):
+        # Kept after its creator deleted their account (brief 010): their own cover link is
+        # not served any more. The stock photo, which is not theirs, still is.
+        url = None
     media = version.cover_media
     signed = signing.sign(media) if media is not None and media.status == "ready" else None
     if signed:

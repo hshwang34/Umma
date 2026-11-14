@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response, status
 
 from app.core.security import CurrentUser, SettingsDep
 from app.db.engine import DbSession
 from app.domains.matching.dictionary import load_dictionary
 from app.domains.recipes import service as recipes_service
 from app.domains.recipes.schemas import MyRecipeList, RecipeCardList
-from app.domains.users import preferences
+from app.domains.users import deletion, preferences
 from app.domains.users import service as users_service
 from app.domains.users.preferences import PreferencesIn, PreferencesOut
 from app.domains.users.schemas import UserOut, UserPatch
@@ -28,6 +28,16 @@ async def patch_me(
     """Change the onboarding role (brief 015) or default servings (brief 020)."""
     changes = body.model_dump(include=body.model_fields_set)
     return UserOut.from_model(await users_service.update_profile(session, user, changes), settings)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    request: Request, session: DbSession, user: CurrentUser, settings: SettingsDep
+) -> Response:
+    """Delete the account and everything it owns, and revoke its Apple token (brief 010)."""
+    apple_client = getattr(request.app.state, "apple_token_client", None)
+    await deletion.delete_account(session, settings, user, apple_client)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/me/onboarding/complete", response_model=UserOut)
