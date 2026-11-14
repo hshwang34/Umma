@@ -273,7 +273,7 @@ final class Slice3FixRoundTests: XCTestCase {
         await model.load()
         service.commandHandler = { _, _ in throw APIError.unreachable(baseURL: "x", underlying: "offline") }
         await model.next()
-        XCTAssertEqual(model.pendingTapText, "Your last tap (Next) wasn’t confirmed")
+        XCTAssertEqual(model.pendingTapText, "“Next” didn’t go through")
         clock = clock.addingTimeInterval(121)
         XCTAssertTrue(model.pendingTapIsStale)
         let oracle = oracle!

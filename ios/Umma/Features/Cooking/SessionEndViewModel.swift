@@ -37,7 +37,7 @@ final class SessionEndViewModel {
     }
 
     var editsLocked: Bool { cooking.isCompletePending }
-    static let lockedMessage = "Your Done hasn’t been confirmed yet, so it can’t be changed. Reconnect to send it, or discard it to edit."
+    static let lockedMessage = "“Done” hasn’t gone through yet, so it can’t be changed. Reconnect to send it, or discard it to edit."
 
     /// The same "Send it again / Discard" choice as the cooking screen's offline banner.
     var asksToResendStaleTap: Bool { cooking.asksToResendStaleTap }

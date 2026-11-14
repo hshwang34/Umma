@@ -52,8 +52,8 @@ final class SessionStarter {
     private let service: CookingService
     private let makeKey: @MainActor () -> String
 
-    static let rateLimitedMessage = "You’ve started a lot of cooks this hour. Try again in a little while."
-    static let changedMessage = "That cook changed since you looked. Check it and confirm again."
+    static let rateLimitedMessage = "You’ve started a lot of recipes this hour. Try again in a little while."
+    static let changedMessage = "That one changed since you looked. Check it and confirm again."
 
     init(service: CookingService, makeKey: @escaping @MainActor () -> String = { UUID().uuidString.lowercased() }) {
         self.service = service
@@ -92,7 +92,7 @@ final class SessionStarter {
                 pendingStart = (recipeVersionId, adaptations, servings)
                 await loadUnfinished(ids: ids, token: token)
                 if token == generation, unfinished.isEmpty {
-                    errorMessage = "You have too many unfinished cooks. Finish or stop one, then try again."
+                    errorMessage = "You’re already cooking a few recipes. Finish or stop one, then try again."
                 }
             } else if error.isRateLimited {
                 errorMessage = Self.rateLimitedMessage
@@ -158,7 +158,7 @@ final class SessionStarter {
             unfinished.removeAll { $0.id == summary.id }
         } catch let error as APIError {
             guard token == generation else { return }
-            errorMessage = "Couldn’t stop that cook: \(error.userMessage)"
+            errorMessage = "Couldn’t stop it: \(error.userMessage)"
             return
         } catch {
             guard token == generation else { return }

@@ -131,9 +131,9 @@ extension QualitativeLevel {
     /// Coach `uncertainty`.
     var uncertaintyText: String {
         switch self {
-        case .low: return "Low uncertainty"
-        case .medium: return "Some uncertainty"
-        case .high: return "High uncertainty — double-check"
+        case .low: return "Fairly sure"
+        case .medium: return "Not certain"
+        case .high: return "Unsure, double-check"
         }
     }
 }

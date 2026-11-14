@@ -24,7 +24,7 @@ final class AssistantViewModelTests: XCTestCase {
         XCTAssertEqual(turn.segments.map(\.heading), [nil, "My suggestion"])
         XCTAssertTrue(turn.segments[0].text.hasPrefix("The recipe says"))
         XCTAssertFalse(model.isStale(turn))
-        XCTAssertEqual(turn.response.uncertainty.uncertaintyText, "Low uncertainty")
+        XCTAssertEqual(turn.response.uncertainty.uncertaintyText, "Fairly sure")
     }
 
     func testStaleBadgeFromServerOrWhenTheStepMoved() async throws {
