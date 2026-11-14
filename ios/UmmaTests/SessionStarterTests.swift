@@ -173,8 +173,9 @@ final class SessionStarterTests: XCTestCase {
         let source = (try? String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Umma/Features/Cooking/UnfinishedCooksSheet.swift"), encoding: .utf8)) ?? ""
         XCTAssertFalse(source.contains("up to 3"))
-        XCTAssertTrue(source.contains("too many unfinished cooks"))
-        XCTAssertTrue(source.contains("Stop this cook?"))
+        XCTAssertTrue(source.contains("You’re already cooking these"))
+        XCTAssertTrue(source.contains("Stop cooking “"))
+        XCTAssertFalse(source.contains("unfinished cooks"), "a cook is a person; a recipe in progress is not “a cook”")
     }
 
     func testFitScreenStartUsesTheStarter() async throws {

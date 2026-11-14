@@ -27,7 +27,7 @@ struct ResumeBanner: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(title) — \(store.resumeStepText ?? "")")
-                .accessibilityHint("Opens the cooking screen at the step the server has")
+                .accessibilityHint("Opens the recipe at your current step")
                 .accessibilityIdentifier("resume.banner")
                 Button {
                     store.dismissBanner()

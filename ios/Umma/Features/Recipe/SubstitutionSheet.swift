@@ -52,7 +52,7 @@ struct SubstitutionSheet: View {
         case .error(let message):
             EmptyStateView(systemImage: "wifi.exclamationmark", title: "Couldn’t look for swaps", message: message,
                            primary: EmptyStateView.Action("Try again") { Task { await model.load() } },
-                           secondary: EmptyStateView.Action("Keep it missing") { dismiss() })
+                           secondary: EmptyStateView.Action("Cook without it") { dismiss() })
         case .noSwap(let reason):
             VStack(alignment: .leading, spacing: Spacing.lg) {
                 Label("No suitable swap", systemImage: "xmark.octagon")
@@ -62,7 +62,7 @@ struct SubstitutionSheet: View {
                     .font(SLFont.body)
                     .foregroundStyle(SLColor.textPrimary)
                     .accessibilityIdentifier("swap.noSwapReason")
-                Button("Keep it missing") { dismiss() }
+                Button("Cook without it") { dismiss() }
                     .buttonStyle(SLButtonStyle(prominent: true))
                     .accessibilityIdentifier("swap.keepMissing")
                 Button("Find another recipe") {
@@ -82,7 +82,7 @@ struct SubstitutionSheet: View {
                         }
                     }
                 }
-                Text("Swaps change this cook only. The recipe itself stays as the creator wrote it, and you can undo a swap any time.")
+                Text("Swaps apply this time only. The recipe stays as written, and you can undo a swap any time.")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.textSecondary)
             }
@@ -129,14 +129,14 @@ private struct SuggestionCard: View {
                     .accessibilityIdentifier("swap.allergyWarning")
             }
             if suggestion.changesSteps > 0 {
-                Text(suggestion.changesSteps == 1 ? "Adjusts 1 step for this cook" : "Adjusts \(suggestion.changesSteps) steps for this cook")
+                Text(suggestion.changesSteps == 1 ? "Changes 1 step" : "Changes \(suggestion.changesSteps) steps")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.textSecondary)
             }
             Button("Use this swap", action: onUse)
                 .buttonStyle(SLButtonStyle(prominent: true))
                 .accessibilityIdentifier("swap.use")
-                .accessibilityHint("Adds this swap to your cook. You can undo it.")
+                .accessibilityHint("Uses this swap this time. You can undo it.")
         }
         .padding(Spacing.lg)
         .background(SLColor.surface, in: RoundedRectangle(cornerRadius: Radius.lg, style: .continuous))

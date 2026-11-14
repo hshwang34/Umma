@@ -63,7 +63,7 @@ final class CookingViewModel: CookingSessionClient {
     /// 404: the store drops it from `active` and the cache.
     var onSessionGone: (@MainActor (UUID) -> Void)?
 
-    static let goneMessage = "This cook is no longer available."
+    static let goneMessage = "This recipe is no longer in progress"
     static let timerAlreadyDoneToast = "That timer has already finished."
 
     private let initial: CookingSession?
@@ -82,7 +82,7 @@ final class CookingViewModel: CookingSessionClient {
     private var announcedDoneTimers: Set<UUID>?
 
     static let conflictToast = "Updated from your other device"
-    static let invalidTransitionToast = "That step change wasn’t possible. Showing where you are."
+    static let invalidTransitionToast = "Couldn’t change steps. This is where you are."
     static let offlineMessage = "Reconnect to continue. Your step hasn’t changed."
     static let staleTapInterval: TimeInterval = 120
 
@@ -219,10 +219,10 @@ final class CookingViewModel: CookingSessionClient {
         return fresh
     }
 
-    /// "Your last tap (Next) wasn’t confirmed" on the offline banner.
+    /// "“Next” didn’t go through" on the offline banner.
     var pendingTapText: String? {
         guard let pending = sender.pending else { return nil }
-        return "Your last tap (\(pending.command.command.displayName)) wasn’t confirmed"
+        return "“\(pending.command.command.displayName)” didn’t go through"
     }
 
     /// A Done (`complete`) whose outcome is unknown. Its body is fixed, so Session end is locked
@@ -568,7 +568,7 @@ final class CookingViewModel: CookingSessionClient {
             return
         }
         if error.isNotFound {
-            errorMessage = "This cooking session is no longer available."
+            errorMessage = "This recipe is no longer in progress."
             return
         }
         errorMessage = error.userMessage

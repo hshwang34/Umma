@@ -165,8 +165,8 @@ struct SessionEndView: View {
                                 .accessibilityIdentifier("end.locked")
                         }
                         if model.asksToResendStaleTap {
-                            Text("That tap is more than 2 minutes old. Send it again?").font(SLFont.callout)
-                            Button("Send it again") { Task { await model.resendStaleTap() } }
+                            Text("That was more than 2 minutes ago. Still want it?").font(SLFont.callout)
+                            Button("Try again") { Task { await model.resendStaleTap() } }
                                 .frame(minHeight: Metrics.minTapTarget)
                                 .accessibilityIdentifier("end.resend")
                             Button("Discard", role: .destructive) { Task { await model.discardStaleTap() } }
@@ -181,7 +181,7 @@ struct SessionEndView: View {
                             .accessibilityIdentifier("end.reconnect")
                         }
                     } footer: {
-                        Text("Your outcome, note and choices are kept until this is sent.")
+                        Text("Your answers are kept until this goes through.")
                     }
                 }
             }

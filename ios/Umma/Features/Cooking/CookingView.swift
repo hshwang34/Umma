@@ -76,13 +76,13 @@ struct CookingView: View {
         case .loading:
             VStack(spacing: Spacing.lg) {
                 ProgressView()
-                Text("Opening your cooking session…").font(SLFont.body)
+                Text("Opening your recipe…").font(SLFont.body)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):
             EmptyStateView(
                 systemImage: "wifi.exclamationmark",
-                title: "Couldn’t open the session",
+                title: "Couldn’t open your recipe",
                 message: message,
                 primary: EmptyStateView.Action("Try again") { Task { await model.refresh() } },
                 secondary: EmptyStateView.Action("Close") { environment.cooking.closeCookingScreen() }
@@ -213,7 +213,7 @@ struct CookingView: View {
             Button("Stop cooking", role: .destructive) { Task { await model.abandon() } }
             Button("Keep cooking", role: .cancel) {}
         } message: {
-            Text("This ends the session. Your swaps for this cook are not saved.")
+            Text("You’ll lose your place, and your swaps won’t be saved.")
         }
         .confirmationDialog("Undo this swap?", isPresented: Binding(get: { swapToRevert != nil }, set: { if !$0 { swapToRevert = nil } }), titleVisibility: .visible) {
             Button("Use the original \(swapToRevert?.original ?? "ingredient")") {
@@ -247,7 +247,7 @@ struct CookingView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Leave cooking screen")
-                .accessibilityHint("The session stays open; continue it from the banner")
+                .accessibilityHint("Your place is kept. Continue from the banner.")
                 .accessibilityIdentifier("cooking.close")
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -333,7 +333,7 @@ struct CookingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
             }
             if model.isPaused {
-                Label("Paused — your step and timers are kept", systemImage: "pause.circle.fill")
+                Label("Paused. Your place and timers are saved.", systemImage: "pause.circle.fill")
                     .font(SLFont.subheadline.weight(.semibold))
                     .foregroundStyle(SLColor.warning)
                     .accessibilityIdentifier("cooking.pausedBanner")
@@ -539,9 +539,9 @@ private struct SafetyNotices: View {
                 } label: {
                     Label {
                         VStack(alignment: .leading, spacing: Spacing.xxs) {
-                            Text("Conflicts with your allergies — revert?")
+                            Text("This swap conflicts with your allergies")
                                 .font(SLFont.headline)
-                            Text("\(swap.replacement) is on your allergy list. Undo it before you go on.")
+                            Text("\(swap.replacement) is on your allergy list. Tap to undo this swap before you go on.")
                                 .font(SLFont.callout)
                         }
                     } icon: {
@@ -554,7 +554,7 @@ private struct SafetyNotices: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!model.canSendCommands)
-                .accessibilityLabel("\(swap.replacement) conflicts with your allergies. Revert to \(swap.original)?")
+                .accessibilityLabel("\(swap.replacement) conflicts with your allergies. Undo the swap and go back to \(swap.original)?")
                 .accessibilityIdentifier("cooking.allergyConflict")
             }
             if let lead = notices.leadNotice {
@@ -909,13 +909,14 @@ private struct OfflineBanner: View {
             HStack(spacing: Spacing.md) {
                 Image(systemName: "wifi.slash").accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
-                    Text(model.isOffline ? "Reconnect to continue" : "Checking with the server…").font(SLFont.headline)
+                    Text(model.isOffline ? "Reconnect to continue" : "Updating…").font(SLFont.headline)
                     if let pending = model.pendingTapText {
                         Text(pending).font(SLFont.footnote.weight(.semibold))
                             .accessibilityIdentifier("cooking.pendingTap")
                     }
-                    if showsDetail {
-                        Text("Showing your last saved step. Nothing moves until the server answers.")
+                    // Only true while offline; a tap that is still on its way needs no explanation.
+                    if showsDetail, model.isOffline {
+                        Text("You’re on your last saved step. It won’t change until you’re back online.")
                             .font(SLFont.footnote)
                     }
                 }
@@ -930,10 +931,10 @@ private struct OfflineBanner: View {
                 }
             }
             if model.asksToResendStaleTap {
-                Text("That tap is more than 2 minutes old. Send it again?")
+                Text("That was more than 2 minutes ago. Still want it?")
                     .font(SLFont.callout)
                 HStack(spacing: Spacing.sm) {
-                    Button("Send it again") { Task { await model.resendStaleTap() } }
+                    Button("Try again") { Task { await model.resendStaleTap() } }
                         .buttonStyle(.borderedProminent)
                         .tint(SLColor.accent)
                         .foregroundStyle(SLColor.onAccent)

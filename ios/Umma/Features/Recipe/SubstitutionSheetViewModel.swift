@@ -115,7 +115,7 @@ final class SubstitutionSheetViewModel {
     private let service: CookingService
     private let preferences: PreferencesService?
 
-    static let fallbackNoSwapReason = "There’s no substitute we can recommend for this one."
+    static let fallbackNoSwapReason = "We don’t have a swap to recommend for this one."
 
     init(recipeVersionId: UUID, ingredientRef: String, ingredientName: String, service: CookingService,
          preferences: PreferencesService? = nil) {
@@ -157,7 +157,7 @@ final class SubstitutionSheetViewModel {
             return
         } catch let error as APIError {
             phase = .error(error.isTransportFailure
-                           ? "Can’t reach the server to look for swaps. You can keep it missing and try again later."
+                           ? "Can’t look for swaps right now. Cook without it, or try again later."
                            : error.userMessage)
         } catch {
             phase = .error(error.userFacingMessage)

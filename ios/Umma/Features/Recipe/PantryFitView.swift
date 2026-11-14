@@ -177,7 +177,7 @@ struct PantryFitView: View {
             }
             if !model.approvedSwapList.isEmpty {
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
-                    Text("Your swaps for this cook")
+                    Text("Your swaps")
                         .font(SLFont.caption)
                         .foregroundStyle(SLColor.textSecondary)
                     ForEach(model.approvedSwapList) { swap in
