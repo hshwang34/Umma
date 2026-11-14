@@ -29,6 +29,9 @@ class FakeSTTStream:
 
     async def finalize(self) -> None:
         self.finalize_count += 1
+        if self._owner.final_on_finalize is not None:
+            ms = len(self.audio) * 1000 // 32_000
+            self.emit(Transcript(self._owner.final_on_finalize, True, True, 0, ms))
 
     async def keepalive(self) -> None:
         self.keepalive_count += 1
@@ -51,6 +54,8 @@ class FakeSTT:
         self.script = list(script or [])
         self.unavailable = unavailable
         self.echo_after_bytes = 0
+        #: When set, every finalize answers with a final transcript of this text.
+        self.final_on_finalize: str | None = None
         self.streams: list[FakeSTTStream] = []
         self.open_count = 0
         self.closed_count = 0

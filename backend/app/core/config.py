@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     voice_idle_timeout_seconds: int = Field(default=60, ge=5)
     voice_max_streams_per_user: int = Field(default=1, ge=1, le=5)
     voice_max_frame_bytes: int = Field(default=16_000, ge=640)  # 0.5 s of 16 kHz s16le mono
+    # A stream that sends keepalives but no audio this long is closed (the phone reopens it).
+    voice_no_audio_timeout_seconds: int = Field(default=300, ge=10)
+    # keepalive / finalize / other text frames per second before the stream is closed.
+    voice_max_controls_per_second: int = Field(default=10, ge=1)
     # POST /v1/voice/speak limits.
     voice_speak_max_chars: int = Field(default=600, ge=1, le=5000)
     voice_speak_per_minute: int = Field(default=20, ge=1)
