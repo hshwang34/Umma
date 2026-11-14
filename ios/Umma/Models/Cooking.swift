@@ -395,6 +395,12 @@ struct CookingSession: Codable, Sendable, Hashable, Identifiable {
     /// Brief 017: ingredients that finishing this cook put on the shopping list. Set only in the
     /// answer to `complete` (and its replay); empty on every other read.
     let shoppingAdded: [String]
+    /// Brief 020: what this cook is for, fixed when it was created. `recipe.ingredients` already
+    /// carries the amounts for it; `recipe.servings` stays the creator's, so display these.
+    let servings: Int
+    let originalServings: Int
+    /// True when the amounts in `recipe.ingredients` are not the creator's.
+    let amountsScaled: Bool
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -416,6 +422,10 @@ struct CookingSession: Codable, Sendable, Hashable, Identifiable {
         startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        // A session from before brief 020 (or a copy cached before it) is the recipe's own.
+        originalServings = try c.decodeIfPresent(Int.self, forKey: .originalServings) ?? recipe.servings
+        servings = try c.decodeIfPresent(Int.self, forKey: .servings) ?? originalServings
+        amountsScaled = try c.decodeIfPresent(Bool.self, forKey: .amountsScaled) ?? (servings != originalServings)
     }
 
     /// The step the server says is current. Falls back to the pinned recipe's text if the session
@@ -458,6 +468,8 @@ struct SessionSummary: Codable, Sendable, Hashable, Identifiable {
 struct CreateSessionRequest: Encodable, Sendable, Equatable {
     let recipeVersionId: UUID
     let adaptations: [AdaptationInput]
+    /// Brief 020: the servings on the dial at the Start tap. Omitted means the recipe's own.
+    var servings: Int? = nil
 }
 
 // MARK: - Commands (§11.1)

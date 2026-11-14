@@ -48,7 +48,7 @@ final class SessionStarter {
     /// What to do once the sheet is dismissed.
     private var outcome: Outcome?
 
-    private var pendingStart: (recipeVersionId: UUID, adaptations: [AdaptationInput])?
+    private var pendingStart: (recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int?)?
     private let service: CookingService
     private let makeKey: @MainActor () -> String
 
@@ -65,7 +65,8 @@ final class SessionStarter {
     var isBusy: Bool { isStarting || abandoningId != nil || retriesInFlight > 0 }
 
     /// Returns the created Session (status `created`), or nil with `errorMessage` / `unfinished` set.
-    func start(recipeVersionId: UUID, adaptations: [AdaptationInput], epoch: Int? = nil) async -> CookingSession? {
+    /// `servings` (brief 020) is what the cook confirmed at the Start tap; a retry keeps it.
+    func start(recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int? = nil, epoch: Int? = nil) async -> CookingSession? {
         guard !isStarting else { return nil }
         if let epoch { initiatedEpoch = epoch }
         let token = generation
@@ -73,7 +74,7 @@ final class SessionStarter {
         errorMessage = nil
         defer { isStarting = false }
         do {
-            let session = try await service.createSession(recipeVersionId: recipeVersionId, adaptations: adaptations)
+            let session = try await service.createSession(recipeVersionId: recipeVersionId, adaptations: adaptations, servings: servings)
             guard token == generation else { return nil }
             pendingStart = nil
             if retriesInFlight > 0 || !unfinished.isEmpty {
@@ -88,7 +89,7 @@ final class SessionStarter {
         } catch let error as APIError {
             guard token == generation else { return nil }
             if let ids = error.openSessionIds {
-                pendingStart = (recipeVersionId, adaptations)
+                pendingStart = (recipeVersionId, adaptations, servings)
                 await loadUnfinished(ids: ids, token: token)
                 if token == generation, unfinished.isEmpty {
                     errorMessage = "You have too many unfinished cooks. Finish or stop one, then try again."
@@ -167,7 +168,7 @@ final class SessionStarter {
         guard let pending = pendingStart else { return }
         retriesInFlight += 1
         defer { retriesInFlight -= 1 }
-        _ = await start(recipeVersionId: pending.recipeVersionId, adaptations: pending.adaptations)
+        _ = await start(recipeVersionId: pending.recipeVersionId, adaptations: pending.adaptations, servings: pending.servings)
     }
 
     private func markChanged(_ latest: CookingSession) {

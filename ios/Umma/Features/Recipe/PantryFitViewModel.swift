@@ -448,11 +448,15 @@ final class PantryFitViewModel {
         }
     }
 
+    /// What the Start tap asks the cook to confirm (brief 020). Nil when no servings were chosen.
+    var startConfirmation: StartConfirmation? { servings.map(StartConfirmation.init) }
+
     /// **Start cooking**: `POST /sessions` pinning this version with the approved swaps. The
     /// returned Session (status `created`) is started by the cooking screen on the same tap.
     func startCooking(epoch: Int? = nil) async -> CookingSession? {
         guard let starter else { return nil }
-        return await starter.start(recipeVersionId: recipeVersionId, adaptations: approvedSwapList.map(\.input), epoch: epoch)
+        return await starter.start(recipeVersionId: recipeVersionId, adaptations: approvedSwapList.map(\.input),
+                                   servings: servings?.servings, epoch: epoch)
     }
 
     /// Cautions by ingredient ref, handed to the cooking screen.

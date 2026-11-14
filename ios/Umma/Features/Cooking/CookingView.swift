@@ -115,6 +115,9 @@ struct CookingView: View {
                         StepPager(model: model)
                             .id(Self.stepTop)
                         SafetyNotices(model: model, notices: notices, onRevert: { swapToRevert = $0 })
+                        if let servings = model.servings {
+                            StepAmountsView(servings: servings, rows: model.stepIngredients)
+                        }
                         if notices.notesChipText != nil || model.adaptedIndicator != nil {
                             NotesChip(notices: notices, adapted: model.adaptedIndicator != nil) { showNotes = true }
                         }
