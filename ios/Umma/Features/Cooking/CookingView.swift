@@ -541,7 +541,7 @@ private struct SafetyNotices: View {
                         VStack(alignment: .leading, spacing: Spacing.xxs) {
                             Text("This swap conflicts with your allergies")
                                 .font(SLFont.headline)
-                            Text("\(swap.replacement) is on your allergy list. Tap to go back to \(swap.original).")
+                            Text("\(swap.replacement) is on your allergy list. Tap to undo this swap before you go on.")
                                 .font(SLFont.callout)
                         }
                     } icon: {
@@ -554,7 +554,7 @@ private struct SafetyNotices: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!model.canSendCommands)
-                .accessibilityLabel("\(swap.replacement) conflicts with your allergies. Go back to \(swap.original)?")
+                .accessibilityLabel("\(swap.replacement) conflicts with your allergies. Undo the swap and go back to \(swap.original)?")
                 .accessibilityIdentifier("cooking.allergyConflict")
             }
             if let lead = notices.leadNotice {
@@ -914,7 +914,8 @@ private struct OfflineBanner: View {
                         Text(pending).font(SLFont.footnote.weight(.semibold))
                             .accessibilityIdentifier("cooking.pendingTap")
                     }
-                    if showsDetail {
+                    // Only true while offline; a tap that is still on its way needs no explanation.
+                    if showsDetail, model.isOffline {
                         Text("You’re on your last saved step. It won’t change until you’re back online.")
                             .font(SLFont.footnote)
                     }
