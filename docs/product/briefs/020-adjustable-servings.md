@@ -91,10 +91,10 @@ the creator wrote it for. Typically someone cooking for one or two from a family
 - Scaling for creators in the editor, and half servings.
 
 ## Open product questions
-None. Answered in DECISIONS #33.
+None. Answered in DECISIONS #35.
 
 ## PR sequence
-1. **Docs:** this brief and DECISIONS #33.
+1. **Docs:** this brief and DECISIONS #35.
 2. **Backend, scaling rules:** a pure scaling module plus a shared fixture of
    expected scaled amounts (the iOS tests decode the same file).
 3. **Backend, default servings:** `default_servings` on the user (migration) and the profile

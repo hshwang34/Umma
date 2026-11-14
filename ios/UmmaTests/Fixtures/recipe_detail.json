@@ -21,6 +21,7 @@
   "prep_minutes": 15,
   "cook_minutes": 20,
   "cover_image_url": null,
+  "cover_credit": null,
   "ingredients": [
     {
       "id": "ing-1",

@@ -366,7 +366,30 @@ merging during active development.
   can land in main. The next push fixes it.
 *Lives in:* `CLAUDE.md` (Workflow and identity).
 
-#33 · 2026-11-14 · **Servings are adjustable and carry into cooking (brief 020).** Implements PRD
+#33 · 2026-11-14 · **Testers sign in with Apple or Google; the dev code leaves the tester flow (brief 010).**
+- **Go:** the PM asked to clear every blocker to an internal and then an external TestFlight
+  build: host the backend and replace the 6-digit code in the server log.
+- **Sign in with Apple** is the first button (App Review guideline 4.8 requires it once any
+  other sign-in is offered). **Sign in with Google** is the second.
+- **Google on iOS without Google's SDK:** the system web sign-in sheet with PKCE, so the public
+  build links no third-party SDK. Revisit if the sheet tests badly.
+- **Separate accounts per provider.** An Apple account and a Google account with the same email
+  are two Umma accounts. Apple can hide the email, so linking by email is unreliable, and
+  merging on an unverified email is an account-takeover risk.
+- **Unchanged:** dev sign-in exists only in dev and test environments and debug builds.
+- **App record:** "Umma Cooks", Apple ID 6834884703, bundle ID `com.umma.ios`, SKU `umma-ios-001`.
+*Lives in:* `docs/product/briefs/010-slice7-release-testflight.md`.
+
+#34 · 2026-11-14 · **The per-user AI day cap is $0.50.**
+- **Cap:** `AI_USER_DAILY_CAP_USD` goes from $0.25 to $0.50 per person per UTC day. It is shared
+  by every interactive AI feature (coach, pantry, receipts, paid voice). Paid voice costs about
+  $0.02 per minute, so a cook gets about 24 minutes of conversation a day instead of 12.
+  The global monthly caps (#18, #19) are unchanged.
+- **Unchanged:** paid voice stays dark (`PAID_VOICE_ENABLED=false`) until the PM's go for the
+  first live call.
+*Lives in:* `backend/app/core/config.py`, `backend/app/ai/budget.py`.
+
+#35 · 2026-11-14 · **Servings are adjustable and carry into cooking (brief 020).** Implements PRD
 §12.2's scaling rule.
 - **Dial:** the recipe page has a servings control stepping through whole servings 1 to 6,
   whatever the recipe's original is. Ingredient amounts rescale at once.
