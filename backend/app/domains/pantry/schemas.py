@@ -7,7 +7,7 @@ Write side is strict (unknown keys → 422) and every text field goes through th
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from functools import partial
 from typing import Annotated, Literal
 
@@ -33,8 +33,9 @@ QUANTITY_MAX = 1_000_000
 
 StorageLocationIn = Literal["fridge", "freezer", "pantry", "counter", "other"]
 SourceIn = Literal["manual", "voice", "photo"]
-# ``live`` is written only by a live scan's finish (brief 016), never by the public POST.
-SourceOut = Literal["manual", "voice", "photo", "live"]
+# ``live`` is written only by a live scan's finish (brief 016) and ``receipt`` only by a receipt
+# read (brief 017), never by the public POST.
+SourceOut = Literal["manual", "voice", "photo", "live", "receipt"]
 ConfidenceBin = Literal["high", "medium", "unknown"]
 
 Label = Annotated[
@@ -266,3 +267,41 @@ class LiveReviewItem(LiveItemOut):
 class LiveScanFinished(BaseModel):
     saved: list[PantryItemOut]
     review: list[LiveReviewItem]
+
+
+# --- receipts (brief 017) -------------------------------------------------------------------
+
+
+class ReceiptNewItem(NewItem):
+    """Internal only: a receipt line's auto-saved item. Not reachable from ``POST /v1/pantry``."""
+
+    source: Literal["receipt"]  # type: ignore[assignment]
+
+
+class CreateReceiptPantryItems(CreatePantryItems):
+    items: list[ReceiptNewItem] = Field(min_length=1, max_length=MAX_ITEMS_PER_REQUEST)  # type: ignore[assignment]
+
+
+class ReceiptSkipped(BaseModel):
+    raw_text: str
+    reason: Literal["unreadable", "unknown_item", "low_confidence"]
+
+
+class ReceiptWouldAdd(BaseModel):
+    """A demo receipt saves nothing; this is what a real one would have added."""
+
+    name: str
+    quantity: float
+    unit: str | None
+
+
+class ReceiptResult(BaseModel):
+    receipt_id: uuid.UUID | None  # null for a demo read: nothing was recorded
+    duplicate: bool = False
+    demo: bool = False
+    purchased_on: date | None
+    store: str | None
+    added: list[PantryItemOut] = []
+    merged: list[PantryItemOut] = []
+    skipped: list[ReceiptSkipped] = []
+    would_add: list[ReceiptWouldAdd] = []  # demo only
