@@ -1,6 +1,6 @@
 # 016 — Live pantry scan
 
-**Status:** approved (direction, 2026-11-13) · spend gate open · **Owner:** PM · **PR:** — · **Updated:** 2026-11-13
+**Status:** building: the scan screen is merged behind `feature.capture.liveScan` (off); a visual pass on a phone and the PM's go to switch it on remain · spend gate open · **Owner:** PM · **PR:** #43, #47, #48, #50, #51, #81, #82, #107, #119 · **Updated:** 2026-11-14
 
 ## Problem
 Adding a pantry today means speaking a list, taking one photo at a time, or typing, and then
@@ -128,6 +128,14 @@ than a real kitchen's, so these numbers are optimistic until a real device test.
   more turns per second than assumed. Backstop: a Google Cloud project budget alert.
 - No session compression or resumption. A 2-minute cap per session is simpler than handling
   GoAway and resumption.
+- Scan screen (#107): review items the cook ticks are saved with source `photo`, because the
+  public pantry POST rejects `live`. On the simulator a fake camera drives the demo; on a phone
+  only the real camera is reachable.
+- Leaving the app pauses the scan with the basket kept (camera off, connection closed, timer
+  stopped). Nothing resumes by itself; "Keep scanning" opens a new two-minute window (#119).
+  The pause is on background only, not for a Control Center pull or a call banner.
+- The sheet cannot be closed while the scan is saving, and auto-added items always reach the
+  Pantry screen (#119).
 
 ## Risks / what could go wrong for users
 - **A confident false detection lands in the pantry** and Pantry fit says "Available" for

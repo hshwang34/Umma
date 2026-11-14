@@ -1,6 +1,6 @@
 # 010 — Slice 7: hardening + public TestFlight beta
 
-**Status:** approved, building (PM go 2026-11-14; Google sign-in added, #33) · **Owner:** PM · **PR:** — · **Updated:** 2026-11-14
+**Status:** building: every PR in the sequence is merged except the first Fly deploy and the first TestFlight upload, which need the PM's go · **Owner:** PM · **PR:** #79, #90, #91, #101, #102, #117, #118, #120–#124 · **Updated:** 2026-11-14
 
 ## Problem
 The app runs only on a laptop with dev sign-in. Nobody outside can try it.
@@ -84,7 +84,33 @@ Internal TestFlight needs PRs 1, 5, 6 and 8. External adds 2, 3, 4, 6a, 6b, 7 an
 - A Neon project on a personal account, and the go for the first Fly deploy.
 
 ## Engineering decisions (filled in by the lead while building)
-- …
+- Hosting: `fly.toml` sits at the repo root because the image needs `fixtures/`. One web
+  machine and one worker, kept running. Migrations run once per deploy as the release command.
+- Rate limits are held in memory on the one web machine (#118). The caller's address is read
+  only from Fly's `Fly-Client-IP` header. IPv6 callers are keyed on their /64 with a /48 cap. A
+  full table degrades to wider shared buckets and is never cleared. Costly routes are marked on
+  the route, and a test fails on an unclassified write route. A rolling deploy resets the
+  limiter. A shared store is the step up if a second web machine is added.
+- Production refuses to start with dev sign-in, without all four AI caps stated, or without the
+  client-address header.
+- Sign in with Apple sends an optional `authorization_code`; the server stores the refresh token
+  encrypted with a key derived from `JWT_SECRET` (#120). Rotating that secret skips later revokes.
+- Account deletion (#121): a recipe another person has cooked, saved, adapted or suggested a
+  swap on is kept under an anonymous "Former Umma cook" account, served without the creator's
+  clips or cover link; the stored version is not changed. Other recipes are deleted. The Apple
+  revoke is tried once. Free text the creator typed stays on a kept recipe. **Open product
+  question: keep anonymised, or make private.**
+- Review login (#122): `POST /v1/auth/review`, absent until `REVIEW_LOGIN_CODE` (20+ characters)
+  is set. Only wrong codes spend the shared budget, so the reviewer cannot be locked out.
+- iOS: the production URL and the Google client ID live in `BuildConfig.swift`. `make
+  release-ios` archives only; `UPLOAD=1` uploads. The build number defaults to a UTC timestamp.
+- iOS: Google sign-in uses the system web sheet with PKCE and shares Safari's cookies. The
+  button is hidden until a client ID is set, and has no Google logo yet.
+- iOS: signing out, deleting the account, changing server or a different account signing in
+  removes recorded transcripts from the phone. An expired session keeps an unsent recording.
+- Universal links and share links use `ummacooks.app`. The site has no recipe page yet and the
+  backend's `SHARE_URL_BASE` default still says `umma.app`.
+- Not verified: any real Fly, Neon, Tigris, Apple or Google call; a release archive.
 
 ## Risks / what could go wrong for users
 - Beta App Review rejects the build. Mitigation: phone-only build, a review account, clear notes,
