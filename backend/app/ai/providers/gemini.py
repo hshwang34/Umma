@@ -211,7 +211,10 @@ class SubstitutionDraft(StrictModel):
 
 # --- Schema derivation ---------------------------------------------------------------------
 
-_DROP_KEYS = {"title", "default", "examples"}
+# ``maxItems``: the API answers 400 "Request contains an invalid argument" when a response schema
+# carries large or several list limits (PantryDraft's 40/8/20 fails, a single 5 passes; found with
+# real calls on 2026-11-14). List lengths are still enforced by Pydantic on the parsed answer.
+_DROP_KEYS = {"title", "default", "examples", "maxItems"}
 
 
 def gemini_schema(model: type[BaseModel]) -> dict[str, Any]:

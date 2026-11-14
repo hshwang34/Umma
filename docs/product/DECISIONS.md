@@ -336,3 +336,21 @@ PRD §4.2 (P1) forward and amends #4 ("P0 social = feed/save/share only").
 - **Unchanged:** the icon is decoration only. Names stay the source of truth for matching, fit and
   safety, and an icon never signals status.
 *Lives in:* `docs/product/briefs/018-ingredient-icons.md`.
+
+#31 · 2026-11-14 · **Recipes get real photos: creator uploads first, Pexels stock photos otherwise, with no "Example photo" label (brief 019).**
+- **Creator photo:** the recipe editor takes a finished-dish photo from the camera or library. It
+  is downscaled and re-encoded as JPEG on the phone, which strips location metadata. It is
+  stored privately, served through signed URLs, and pinned to the published version like step
+  clips.
+- **Stock photo:** a recipe without a creator photo gets the first Pexels result for its title,
+  looked up once after publish or by backfill and stored on the recipe. A creator photo always
+  replaces it. If the lookup finds nothing, the placeholder stays; nothing is guessed. Web image
+  search was ruled out: those photos belong to other sites. AI-generated images were not chosen.
+- **No label (PM call):** stock photos are not marked "Example photo" on cards or the recipe
+  page. The recipe page shows "Photo: {photographer} / Pexels", which Pexels' API terms ask for.
+  The PM accepted that a stock photo may be read as the creator's own dish.
+- **Layout:** card and recipe photos shrink to about 2.4:1. The four tabs use our own header,
+  with the title at the top left, instead of the standard navigation bar.
+- **Unchanged:** no AI-generated recipes as a primary flow (#4); photos are user-initiated
+  (capture invariant); no image moderation beyond type and size for the pilot.
+*Lives in:* `docs/product/briefs/019-recipe-photos.md`.

@@ -21,6 +21,9 @@ from app.core.logging import CorrelationIdMiddleware, configure_logging
 from app.core.security import DevAuthProvider
 from app.db.engine import make_engine, make_sessionmaker
 from app.media.storage import build_storage
+from app.voice.registry import build_stt, build_tts
+from app.voice.speak import SpeakLimiter
+from app.voice.stream import StreamLimiter
 
 log = logging.getLogger("umma.app")
 
@@ -65,6 +68,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Object storage for creator video and clips (brief 008). Building the client is offline.
     app.state.storage = build_storage(settings)
     app.state.auth_provider = None
+    # Paid server voice (brief 012 PR 2): None when its key is absent (the routes then refuse).
+    app.state.voice_stt = build_stt(settings)
+    app.state.voice_streams = StreamLimiter()
+    app.state.voice_tts = build_tts(settings)
+    app.state.voice_speak_limiter = SpeakLimiter()
 
     install_error_handlers(app)
     # CORS is off unless origins are configured; the iOS client does not need it.

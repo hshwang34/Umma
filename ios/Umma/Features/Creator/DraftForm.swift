@@ -214,6 +214,9 @@ struct EditableIngredient: Identifiable, Equatable, Sendable {
     var optional = false
     var preparation = ""
     var notes = ""
+    /// Carried through unchanged, like `EditableStep.evidenceOrigin`; publish turns
+    /// `ai_extracted` into `creator_reviewed` on the server.
+    var evidenceOrigin: EvidenceOrigin?
 
     init(id: String) {
         self.id = id
@@ -227,6 +230,7 @@ struct EditableIngredient: Identifiable, Equatable, Sendable {
         optional = ingredient.optional
         preparation = ingredient.preparation ?? ""
         notes = ingredient.notes ?? ""
+        evidenceOrigin = ingredient.evidenceOrigin
     }
 
     var ingredient: Ingredient {
@@ -237,7 +241,8 @@ struct EditableIngredient: Identifiable, Equatable, Sendable {
             unit: DraftText.nonEmpty(DraftText.singleLine(unit, max: DraftLimits.unit)),
             optional: optional,
             preparation: DraftText.nonEmpty(DraftText.singleLine(preparation, max: DraftLimits.preparation)),
-            notes: DraftText.nonEmpty(DraftText.multiLine(notes, max: DraftLimits.ingredientNotes))
+            notes: DraftText.nonEmpty(DraftText.multiLine(notes, max: DraftLimits.ingredientNotes)),
+            evidenceOrigin: evidenceOrigin
         )
     }
 

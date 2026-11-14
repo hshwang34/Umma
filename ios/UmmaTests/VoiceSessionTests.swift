@@ -453,13 +453,17 @@ final class VoiceSessionTests: XCTestCase {
 
     func testPaidFallsBackToFreeWithAVisibleReason() async throws {
         let free = FakeVoiceTransport()
-        let transport = VoiceTierChoice.transport(entitlement: .paid, runOnDevice: false) { free }
+        let server = FakePaidVoiceServer()
+        server.openError = URLError(.notConnectedToInternet)
+        let transport = VoiceTierChoice.transport(entitlement: .paid, runOnDevice: false, makeFree: { free }) {
+            PaidVoiceTransport(server: server, audio: FakePaidVoiceAudio(), fallback: $0)
+        }
         XCTAssertTrue(transport is PaidVoiceTransport)
-        XCTAssertEqual(transport.notice, PaidVoiceTransport.fallbackNotice)
+        XCTAssertNil(transport.notice)
         let session = VoiceSession(transport: transport, clock: clock)
         try await session.start()
         XCTAssertTrue(free.isRunning)
-        XCTAssertEqual(session.notice, PaidVoiceTransport.fallbackNotice)
+        XCTAssertEqual(session.notice, PaidVoiceTransport.offlineNotice)
         free.emit(.transcript(text: "eggs and rice", isFinal: true))
         XCTAssertEqual(session.userCaptions.map(\.text), ["eggs and rice"])
         await session.say("Got two.")
@@ -467,7 +471,8 @@ final class VoiceSessionTests: XCTestCase {
     }
 
     func testFreeEntitlementGetsTheFreeTransportDirectly() {
-        let transport = VoiceTierChoice.transport(entitlement: .free, runOnDevice: false) { FakeVoiceTransport() }
+        let transport = VoiceTierChoice.transport(entitlement: .free, runOnDevice: false,
+                                                  makeFree: { FakeVoiceTransport() }, makePaid: { $0 })
         XCTAssertTrue(transport is FakeVoiceTransport)
         XCTAssertNil(transport.notice)
     }

@@ -9,10 +9,18 @@ struct ProfileView: View {
     @State private var openError: String?
     @State private var recipeToUnpublish: MyRecipe?
     @State private var draftToDelete: DraftSummary?
+    @State private var showServerSettings = false
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    header
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+                .listSectionSpacing(.compact)
                 myRecipesSection
                 draftsSection
                 foodSection
@@ -30,24 +38,17 @@ struct ProfileView: View {
             .scrollContentBackground(.hidden)
             .background(SLColor.background)
             .navigationTitle("Profile")
+            .tabRootHeader()
             .navigationDestination(for: RecipeRoute.self) { route in
                 switch route {
                 case .creator(let id):
-                    CreatorProfileView(creatorId: id)
+                    CreatorProfileView(creatorId: id).pushedFromTabRoot()
                 case .recipe(let id, let card):
-                    RecipeDetailView(recipeId: id, card: card)
+                    RecipeDetailView(recipeId: id, card: card).pushedFromTabRoot()
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        ServerSettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .frame(width: Metrics.minTapTarget, height: Metrics.minTapTarget)
-                    }
-                    .accessibilityLabel("Server settings")
-                }
+            .navigationDestination(isPresented: $showServerSettings) {
+                ServerSettingsView().pushedFromTabRoot()
             }
             .refreshable { await model?.refresh() }
             .confirmationDialog("Unpublish “\(recipeToUnpublish?.card.title ?? "")”?", isPresented: Binding(get: { recipeToUnpublish != nil }, set: { if !$0 { recipeToUnpublish = nil } }), titleVisibility: .visible) {
@@ -84,6 +85,18 @@ struct ProfileView: View {
             guard environment.requestNewRecipe else { return }
             environment.requestNewRecipe = false
             await createRecipe()
+        }
+    }
+
+    /// Brief 019: the tab's own header. Settings is a button, not a NavigationLink, so the
+    /// header row in the List doesn't turn into a navigation cell.
+    private var header: some View {
+        TabHeader(title: "Profile") {
+            Button { showServerSettings = true } label: {
+                Label("Server settings", systemImage: "gearshape")
+            }
+            .accessibilityLabel("Server settings")
+            .accessibilityIdentifier("profile.serverSettings")
         }
     }
 

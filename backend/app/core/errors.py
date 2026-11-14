@@ -205,6 +205,27 @@ class AIResting(AppError):
     retryable = True
 
 
+# --- Paid server voice (brief 012 PR 2) -----------------------------------------------------
+
+
+class VoiceNotEntitled(AppError):
+    """Server voice is a Paid feature; Free keeps the on-device voice."""
+
+    code = "VOICE_NOT_ENTITLED"
+    status_code = 403
+
+
+class VoiceUnavailable(AppError):
+    """No vendor key configured, or the vendor refused or failed. The phone uses its own voice."""
+
+    code = "VOICE_UNAVAILABLE"
+    status_code = 503
+    retryable = True
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or "Server voice is unavailable. Voice runs on this iPhone.")
+
+
 class StorageUnavailable(AppError):
     code = "STORAGE_UNAVAILABLE"
     status_code = 503
