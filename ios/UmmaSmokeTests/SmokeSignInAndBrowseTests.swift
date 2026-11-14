@@ -367,6 +367,148 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         attach(app, "site-fit")
     }
 
+    // MARK: - "Cook it tonight" journey screenshots
+
+    /// Captures the learner's whole evening on the current build: a stocked-but-not-complete pantry,
+    /// the seeded recipe, pantry fit, a swap, the ready screen, cooking (notes, tools, coach, timer,
+    /// pause/resume) and session end. Skipped unless `UMMA_JOURNEY_CAPTURE=1` reaches the runner;
+    /// export the `journey-*` attachments from the .xcresult.
+    func testCaptureCookTonightJourney() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["UMMA_JOURNEY_CAPTURE"] == "1",
+                          "set UMMA_JOURNEY_CAPTURE=1 to capture the cook-tonight journey")
+        let app = try launchSignedIn(email: "tonight-\(Int(Date().timeIntervalSince1970))@umma.dev")
+        let settle = { Thread.sleep(forTimeInterval: 1.2) }
+
+        // A realistic weeknight pantry: most of the recipe, but no rice vinegar or fresh ginger.
+        app.tabBars.buttons["Pantry"].tap()
+        let speak = app.buttons["pantry.speak"]
+        XCTAssertTrue(speak.waitForExistence(timeout: 10), "Pantry has no Speak button")
+        settle(); attach(app, "journey-00-pantry-empty")
+        speak.tap()
+        let typeInstead = app.buttons["speak.typeInstead"]
+        if typeInstead.waitForExistence(timeout: 3) { typeInstead.tap() }
+        let transcript = app.descendants(matching: .any)["speak.transcript"].firstMatch
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5), "no transcript field")
+        type("2 lb chicken thighs, 3 tbsp gochujang, soy sauce, honey, garlic, sesame oil, two onions", into: transcript, in: app)
+        let findItems = app.buttons["speak.findItems"]
+        XCTAssertTrue(wait(for: findItems, enabled: true, timeout: 5))
+        findItems.tap()
+        // A long list leaves Confirm below the lazy fold; wait for the title instead.
+        XCTAssertTrue(app.staticTexts["Review items"].firstMatch.waitForExistence(timeout: 15), "Scan review did not open")
+        settle(); attach(app, "journey-00b-pantry-review")
+        let confirm = app.buttons["review.confirm"]
+        scrollUntilHittable(confirm, in: app)
+        XCTAssertTrue(wait(for: confirm, enabled: true, timeout: 5), "Confirm stayed disabled")
+        confirm.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "pantry.row").firstMatch.waitForExistence(timeout: 15),
+                      "pantry did not list the added items")
+        settle(); attach(app, "journey-01-pantry")
+
+        openSeededRecipe(app)
+        if app.keyboards.firstMatch.exists { app.swipeDown() }
+        XCTAssertTrue(app.staticTexts["by Umma Kitchen"].firstMatch.waitForExistence(timeout: 10))
+        settle(); attach(app, "journey-02-recipe")
+        app.swipeUp(); settle(); attach(app, "journey-03-recipe-ingredients")
+
+        let check = app.buttons["recipe.checkPantry"]
+        scrollUntilHittable(check, in: app)
+        XCTAssertTrue(wait(for: check, enabled: true, timeout: 10))
+        check.tap()
+        XCTAssertTrue(app.staticTexts["fit.headline"].waitForExistence(timeout: 15), "Pantry fit did not load")
+        settle(); attach(app, "journey-04-fit")
+
+        let findSwap = app.buttons.matching(NSPredicate(format: "identifier == 'fit.action.findSwap' AND label CONTAINS[c] 'rice vinegar'")).firstMatch
+        scrollUntilHittable(findSwap, in: app)
+        settle(); attach(app, "journey-05-fit-missing")
+        XCTAssertTrue(findSwap.exists, "no Find a swap for rice vinegar")
+        findSwap.tap()
+        let use = app.buttons["swap.use"].firstMatch
+        XCTAssertTrue(use.waitForExistence(timeout: 20), "no swap suggestions")
+        settle(); attach(app, "journey-06-swaps")
+        scrollUntilHittable(use, in: app)
+        use.tap()
+        let summary = app.descendants(matching: .any)["fit.swapSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5), "approved swap not shown")
+        scrollUntilHittable(summary, in: app)
+        settle(); attach(app, "journey-07-fit-with-swap")
+
+        let startCooking = app.buttons["fit.startCooking"]
+        scrollUntilHittable(startCooking, in: app)
+        XCTAssertTrue(wait(for: startCooking, enabled: true, timeout: 10))
+        startCooking.tap()
+        let counter = app.staticTexts["cooking.stepCounter"]
+        XCTAssertTrue(counter.waitForExistence(timeout: 15), "cooking screen did not open")
+        let start = app.buttons["cooking.start"]
+        if start.waitForExistence(timeout: 5) {
+            settle(); attach(app, "journey-08-ready")
+            XCTAssertTrue(wait(for: start, enabled: true, timeout: 10))
+            start.tap()
+        }
+        let next = app.buttons["cooking.next"]
+        XCTAssertTrue(next.waitForExistence(timeout: 10), "Start did not begin step 1")
+        settle(); attach(app, "journey-09-step1")
+
+        let notes = app.buttons["cooking.notes"]
+        if notes.exists {
+            notes.tap(); settle(); attach(app, "journey-10-notes")
+            let done = app.buttons["cooking.notes.done"]
+            if done.waitForExistence(timeout: 3) { done.tap() } else { app.swipeDown() }
+            settle()
+        }
+        app.buttons["cooking.tools"].tap(); settle(); attach(app, "journey-11-tools")
+        let ask = app.buttons["cooking.ask"]
+        XCTAssertTrue(ask.waitForExistence(timeout: 5))
+        ask.tap()
+        let field = app.descendants(matching: .any)["assistant.query"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "assistant drawer did not open")
+        type("can I use apple cider vinegar here?", into: field, in: app)
+        app.buttons["assistant.send"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["assistant.badge"].firstMatch.waitForExistence(timeout: 20), "no coach answer")
+        settle(); attach(app, "journey-12-coach")
+        app.buttons["assistant.dismiss"].tap()
+
+        var step = 1
+        var sawTimer = false
+        var paused = false
+        for _ in 0..<30 {
+            XCTAssertTrue(wait(for: next, enabled: true, timeout: 10), "Next stayed disabled")
+            if next.label == "Finish" { break }
+            let before = counter.label
+            next.tap()
+            XCTAssertTrue(waitForLabelChange(counter, from: before, timeout: 10), "Next did not move (\(before))")
+            step += 1
+            settle(); attach(app, String(format: "journey-13-step%02d", step))
+            let timerStart = app.buttons["cooking.timer.start"]
+            if !sawTimer, timerStart.exists {
+                sawTimer = true
+                timerStart.tap(); settle(); attach(app, String(format: "journey-13-step%02d-timer-running", step))
+            }
+            if !paused, step == 3 {
+                paused = true
+                app.buttons["cooking.pause"].tap()
+                let resume = app.buttons["cooking.resume"]
+                XCTAssertTrue(resume.waitForExistence(timeout: 10), "Pause did not take")
+                settle(); attach(app, "journey-14-paused")
+                resume.tap()
+                XCTAssertTrue(next.waitForExistence(timeout: 10))
+            }
+        }
+        settle(); attach(app, "journey-15-last-step")
+
+        next.tap()
+        let cooked = app.buttons["end.outcome.cooked"]
+        XCTAssertTrue(cooked.waitForExistence(timeout: 10), "session end did not open")
+        settle(); attach(app, "journey-16-finish")
+        cooked.tap()
+        let save = app.switches["end.saveChanges"]
+        if save.waitForExistence(timeout: 5), (save.value as? String) != "1" { save.tap() }
+        scrollUntilHittable(save, in: app)
+        settle(); attach(app, "journey-17-finish-saved")
+        app.buttons["end.done"].tap()
+        XCTAssertTrue(counter.waitForNonExistence(timeout: 15))
+        settle(); attach(app, "journey-18-after")
+    }
+
     /// Cooking screen → Ask → "what does this step mean?" → an answer with a step badge → Done.
     private func askCoach(_ app: XCUIApplication) {
         // Repeat / Slower / Ask / Look live in the tools menu (brief 013 Part C).
