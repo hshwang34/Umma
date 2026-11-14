@@ -151,7 +151,13 @@ class TimerStatus(enum.StrEnum):
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("auth_provider", "auth_subject"),)
+    __table_args__ = (
+        UniqueConstraint("auth_provider", "auth_subject"),
+        CheckConstraint(
+            "default_servings IS NULL OR default_servings BETWEEN 1 AND 6",
+            name="default_servings_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     auth_provider: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -167,6 +173,8 @@ class User(TimestampMixin, Base):
     # Public creator profile fields (brief 015). Shown on creator pages and follow suggestions.
     bio: Mapped[str | None] = mapped_column(String(280))
     avatar_url: Mapped[str | None] = mapped_column(String(2048))
+    # Brief 020: servings every recipe opens scaled to. Null means "the recipe's own".
+    default_servings: Mapped[int | None] = mapped_column(Integer)
 
 
 class Follow(CreatedAtMixin, Base):
@@ -221,6 +229,15 @@ class Recipe(TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(Text)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     cover_image_url: Mapped[str | None] = mapped_column(Text)
+    # Brief 019: the latest version's uploaded cover (listing mirror; reads use the version's),
+    # and a Pexels stock photo stored once after publish or by backfill (never read live).
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
+    )
+    stock_photo_url: Mapped[str | None] = mapped_column(Text)
+    stock_photo_credit_name: Mapped[str | None] = mapped_column(String(200))
+    stock_photo_credit_url: Mapped[str | None] = mapped_column(Text)
+    stock_photo_id: Mapped[str | None] = mapped_column(String(64))
     latest_version_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recipe_versions.id", use_alter=True, ondelete="SET NULL")
     )
@@ -274,6 +291,15 @@ class RecipeVersion(CreatedAtMixin, Base):
     cover_image_url: Mapped[str | None] = mapped_column(Text)
     source_video_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
+    )
+    # Brief 019: the creator's uploaded cover photo pinned at publish. The media row is kept
+    # while a version points at it (``delete_media`` refuses), so SET NULL never fires on a
+    # live version.
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
+    )
+    cover_media: Mapped[RecipeMedia | None] = relationship(
+        foreign_keys=[cover_media_id], lazy="joined"
     )
 
 
@@ -376,6 +402,10 @@ class RecipeDraft(TimestampMixin, Base):
     )
     structured_draft_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
+    )
+    # Brief 019: the draft's confirmed cover photo (set only by the cover routes).
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
     )
     status: Mapped[DraftStatus] = mapped_column(
         _enum(DraftStatus, "draft_status"), nullable=False, default=DraftStatus.EDITING

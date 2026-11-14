@@ -130,7 +130,8 @@ Gotchas that have cost real time:
 - PM mode (`/pm`): process in `docs/product/README.md`, decisions in `docs/product/DECISIONS.md`.
   PRs merge when every CI check is green and the gate passed: merge commit, never `--delete-branch`.
   Backend CI runs on every push. iOS CI (`.github/workflows/ios.yml`) is manual only (macOS minutes):
-  run `gh workflow run ios --ref <branch>` before merging an iOS PR.
+  run `gh workflow run ios --ref <branch>` once per stack, on its top branch, before merging the
+  stack's iOS PRs (DECISIONS #32). A lone iOS PR is its own stack. Rerun it if main is merged in.
 - Branches only in worktrees under `.claude/worktrees/`. Never switch branches in the main checkout
   (GitHub Desktop runs on it).
 - Personal identity only: GitHub `hshwang34`, commits as `jacogoby@gmail.com`, Apple Team

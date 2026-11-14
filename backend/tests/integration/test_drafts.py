@@ -16,6 +16,7 @@ DRAFT_KEYS = {
     "summary",
     "tags",
     "cover_image_url",
+    "cover_media_id",
     "servings",
     "prep_minutes",
     "cook_minutes",

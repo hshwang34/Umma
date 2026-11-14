@@ -67,8 +67,45 @@ struct Draft: Codable, Sendable, Identifiable, Hashable {
     let validation: DraftValidation
     let createdAt: Date
     let updatedAt: Date
+    /// Brief 008 / 014: where an AI draft came from. Omitted on hand-authored drafts; read-only.
+    var extraction: DraftExtraction? = nil
 
     var orderedSteps: [RecipeStep] { steps.sorted { $0.order < $1.order } }
+}
+
+/// `Draft.extraction` (brief 008 §4). `unknowns` lists what the creator never said ("amount of
+/// sesame oil not stated"); `notice` explains demo (AI-off) content.
+struct DraftExtraction: Codable, Sendable, Hashable {
+    let jobId: UUID
+    var sourceMediaId: UUID? = nil
+    var demo = false
+    var partial = false
+    var unknowns: [String] = []
+    var notice: String? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case jobId, sourceMediaId, demo, partial, unknowns, notice
+    }
+
+    init(jobId: UUID, sourceMediaId: UUID? = nil, demo: Bool = false, partial: Bool = false, unknowns: [String] = [], notice: String? = nil) {
+        self.jobId = jobId
+        self.sourceMediaId = sourceMediaId
+        self.demo = demo
+        self.partial = partial
+        self.unknowns = unknowns
+        self.notice = notice
+    }
+
+    /// Tolerant: only `job_id` is required.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        jobId = try container.decode(UUID.self, forKey: .jobId)
+        sourceMediaId = try container.decodeIfPresent(UUID.self, forKey: .sourceMediaId)
+        demo = try container.decodeIfPresent(Bool.self, forKey: .demo) ?? false
+        partial = try container.decodeIfPresent(Bool.self, forKey: .partial) ?? false
+        unknowns = try container.decodeIfPresent([String].self, forKey: .unknowns) ?? []
+        notice = try container.decodeIfPresent(String.self, forKey: .notice)
+    }
 }
 
 /// `GET /v1/recipes/drafts` item: `Draft` minus the arrays, plus counts.

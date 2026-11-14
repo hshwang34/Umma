@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.v1 import (
     ai,
@@ -21,8 +21,9 @@ from app.api.v1 import (
     substitutions,
     voice,
 )
+from app.media.signing import bind_media_signer
 
-router = APIRouter(prefix="/v1")
+router = APIRouter(prefix="/v1", dependencies=[Depends(bind_media_signer)])
 router.include_router(health.router)
 router.include_router(me.router)
 router.include_router(creators.router)
