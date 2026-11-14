@@ -150,6 +150,18 @@ def test_ipv6_is_capped_per_48_as_well_as_per_64() -> None:
     assert not limiter.allow("2001:db8:2:1::/64")
 
 
+def test_a_throttled_64_does_not_spend_its_48s_budget() -> None:
+    now = [0.0]
+    limiter = IpLimiter(2, clock=lambda: now[0])
+    noisy, neighbour = "2001:db8:7:1::/64", "2001:db8:7:2::/64"
+    assert limiter.allow(noisy) and limiter.allow(noisy)
+    for _ in range(200):
+        assert not limiter.allow(noisy)  # over its own limit: nothing is charged anywhere
+    assert len(limiter.coarse._hits["2001:db8:7::/48"]) == 2
+    assert limiter.allow(neighbour) and limiter.allow(neighbour)  # same /48, still served
+    assert not limiter.allow(neighbour)
+
+
 def test_coarse_buckets() -> None:
     assert _coarse("203.0.113.77") == "203.0.113.0/24"
     assert _coarse("2001:db8:1:2::/64") == "2001:db8:1::/48"

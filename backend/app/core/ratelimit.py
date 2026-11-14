@@ -77,6 +77,17 @@ class WindowLimiter:
         """A full table of active keys refuses a new key (fail closed)."""
         return self.try_allow(key) is True
 
+    def would_allow(self, key: Hashable) -> bool:
+        """Whether a hit would be within the limit, without recording one or adding a key.
+        (A new key on a full table still answers ``True``: ``try_allow`` decides that.)"""
+        if self.limit <= 0:
+            return True
+        hits = self._hits.get(key)
+        if hits is None:
+            return True
+        now = self._clock()
+        return sum(1 for hit in hits if now - hit < WINDOW_SECONDS) < self.limit
+
     def try_allow(self, key: Hashable) -> bool | None:
         """``True`` allowed, ``False`` over the limit, ``None`` when the key is new and the
         table is full of active keys (the caller decides what a full table means)."""
@@ -144,9 +155,11 @@ class IpLimiter:
         if self.limit <= 0:
             return True
         if "/" in key:
-            # IPv6: the /48 cap comes first. A request it rejects never creates or touches a
-            # /64 entry, so one allocation cannot fill the fine table with distinct /64s.
-            if not self._wide(key):
+            # IPv6, check then charge. A /64 already over its own limit is rejected without
+            # charging its /48 (it must not starve its neighbours). A request the /48 cap
+            # rejects never creates or touches a /64 entry (one allocation cannot fill the
+            # fine table). Only a request both allow is counted in both.
+            if not self.fine.would_allow(key) or not self._wide(key):
                 return False
             return self.fine.try_allow(key) is not False  # full table: the /48 cap stands in
         tracked = self.fine.try_allow(key)
