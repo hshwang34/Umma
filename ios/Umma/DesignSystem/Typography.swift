@@ -44,8 +44,8 @@ enum SLFont {
     /// Decorative glyphs in empty states and placeholders (scales with Dynamic Type).
     static let glyph = Font.system(.largeTitle, design: .default, weight: .light)
 
-    /// UIKit navigation bars: Bagel Fat One for large titles (Explore, Saved, Pantry, Profile),
-    /// SF Pro semibold for inline titles. Called once at launch.
+    /// UIKit navigation bars: Bagel Fat One for any large title, SF Pro semibold for inline
+    /// titles. Called once at launch. The four tab roots draw `TabHeader` instead (brief 019).
     @MainActor
     static func applyNavigationBarAppearance() {
         let bar = UINavigationBar.appearance()
