@@ -43,3 +43,47 @@ struct StepsHeaderPresentation: Equatable, Sendable {
         provenancePill = detail.headerProvenanceLabel
     }
 }
+
+/// Brief 019: the recipe page photo. Says whether it opens the full-screen viewer (a real photo
+/// only, never the placeholder) and what credit line it shows under it.
+struct RecipePhotoPresentation: Equatable, Sendable {
+    struct Credit: Equatable, Sendable {
+        /// "Photo: Jane Doe / Pexels"
+        let text: String
+        let url: URL
+        let accessibilityLabel: String
+        let accessibilityHint = "Opens the photographer’s page"
+    }
+
+    let imageURL: URL?
+    let credit: Credit?
+
+    init(imageURL: URL?, credit: CoverCredit?) {
+        self.imageURL = imageURL
+        self.credit = imageURL == nil ? nil : credit.flatMap(Self.credit(from:))
+    }
+
+    /// Only a real photo opens the viewer.
+    var opensViewer: Bool { imageURL != nil }
+    var accessibilityLabel: String { imageURL == nil ? "No photo yet" : "Recipe photo" }
+    var accessibilityHint: String? { opensViewer ? "Opens the photo full screen" : nil }
+
+    /// Pexels is the only provider today. A credit from an unknown source, without a name, or
+    /// with a link that isn't http(s) is not shown rather than shown wrong.
+    private static func credit(from credit: CoverCredit) -> Credit? {
+        let name = credit.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              let sourceName = sourceNames[credit.source.lowercased()],
+              let url = URL(string: credit.url),
+              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              url.host?.isEmpty == false
+        else { return nil }
+        return Credit(
+            text: "Photo: \(name) / \(sourceName)",
+            url: url,
+            accessibilityLabel: "Photo by \(name) on \(sourceName)"
+        )
+    }
+
+    private static let sourceNames = ["pexels": "Pexels"]
+}

@@ -15,12 +15,12 @@ struct PantryView: View {
                 if let model {
                     content(model)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    headed { ProgressView() }
                 }
             }
             .background(SLColor.background)
             .navigationTitle("Pantry")
-            .toolbar { toolbar }
+            .tabRootHeader()
         }
         .task(id: environment.pantryRevision) {
             let model = self.model ?? makeModel()
@@ -47,9 +47,9 @@ struct PantryView: View {
         return model
     }
 
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .topBarTrailing) {
+    /// Brief 019: the tab's own header, with Speak / Scan / Add at its trailing edge.
+    private var header: some View {
+        TabHeader(title: "Pantry") {
             Button { capture = .speak } label: {
                 Label("Speak", systemImage: "mic")
             }
@@ -67,6 +67,14 @@ struct PantryView: View {
         }
     }
 
+    /// A non-scrolling state (loading, error) under the header.
+    private func headed(@ViewBuilder _ body: () -> some View) -> some View {
+        VStack(spacing: 0) {
+            header.padding(.horizontal, Spacing.screen)
+            body().frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     private func openAdd(prefill: PantryItemForm? = nil) {
         editor = PantryItemEditorModel(mode: .add, form: prefill, service: environment.api)
     }
@@ -75,17 +83,19 @@ struct PantryView: View {
     private func content(_ model: PantryViewModel) -> some View {
         switch model.phase {
         case .loading:
-            ProgressView("Loading your pantry…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            headed { ProgressView("Loading your pantry…") }
         case .error(let message):
-            EmptyStateView(
-                systemImage: "wifi.exclamationmark",
-                title: "Couldn’t load your pantry",
-                message: message,
-                primary: EmptyStateView.Action("Try again") { Task { await model.load() } }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            headed {
+                EmptyStateView(
+                    systemImage: "wifi.exclamationmark",
+                    title: "Couldn’t load your pantry",
+                    message: message,
+                    primary: EmptyStateView.Action("Try again") { Task { await model.load() } }
+                )
+            }
         case .loaded where model.items.isEmpty:
             ScrollView {
+                header.padding(.horizontal, Spacing.screen)
                 EmptyStateView(
                     systemImage: "basket",
                     title: "Your pantry is empty",
@@ -105,6 +115,13 @@ struct PantryView: View {
 
     private func list(_ model: PantryViewModel) -> some View {
         List {
+            Section {
+                header
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            .listSectionSpacing(.compact)
             if let error = model.actionError {
                 Section {
                     Text(error)

@@ -177,21 +177,7 @@ async def create_upload_intent(
             "Finish or cancel your other video upload first.",
             extra={"details": {"pending": int(pending or 0)}},
         )
-    used = await session.scalar(
-        select(func.coalesce(func.sum(UsageEvent.amount), 0)).where(
-            UsageEvent.user_id == user.id,
-            UsageEvent.kind == UPLOAD_BYTES_KIND,
-            UsageEvent.created_at >= month_start(now),
-        )
-    )
-    if int(used or 0) + body.size_bytes > settings.video_upload_bytes_per_month:
-        raise UploadLimit(
-            "You've reached this month's video upload allowance.",
-            extra={"details": {"limit_bytes": settings.video_upload_bytes_per_month}},
-        )
-    session.add(
-        UsageEvent(user_id=user.id, kind=UPLOAD_BYTES_KIND, amount=body.size_bytes, created_at=now)
-    )
+    await charge_upload_bytes(session, user, body.size_bytes, settings=settings, now=now)
     media_id = uuid.uuid4()
     consent = MediaConsent(
         owner_user_id=user.id,
@@ -227,6 +213,28 @@ async def create_upload_intent(
         expires_at=now + timedelta(seconds=ttl),
         max_bytes=settings.video_max_bytes,
         max_duration_ms=settings.video_max_duration_ms,
+    )
+
+
+async def charge_upload_bytes(
+    session: AsyncSession, user: User, size_bytes: int, *, settings: Settings, now: datetime
+) -> None:
+    """The monthly upload byte budget (videos and cover photos share it). Call with the user's
+    upload lock held; the declared size is charged now and never refunded."""
+    used = await session.scalar(
+        select(func.coalesce(func.sum(UsageEvent.amount), 0)).where(
+            UsageEvent.user_id == user.id,
+            UsageEvent.kind == UPLOAD_BYTES_KIND,
+            UsageEvent.created_at >= month_start(now),
+        )
+    )
+    if int(used or 0) + size_bytes > settings.video_upload_bytes_per_month:
+        raise UploadLimit(
+            "You've reached this month's upload allowance.",
+            extra={"details": {"limit_bytes": settings.video_upload_bytes_per_month}},
+        )
+    session.add(
+        UsageEvent(user_id=user.id, kind=UPLOAD_BYTES_KIND, amount=size_bytes, created_at=now)
     )
 
 
@@ -281,13 +289,13 @@ async def lock_user_video(session: AsyncSession, user_id: uuid.UUID) -> None:
 async def reap_expired_uploads(
     session: AsyncSession, settings: Settings, now: datetime | None = None
 ) -> int:
-    """Delete pending source rows whose upload URL has expired (plus a minute of grace); the
-    trigger queues their objects in case a late PUT landed."""
+    """Delete pending source and cover rows whose upload URL has expired (plus a minute of
+    grace); the trigger queues their objects in case a late PUT landed."""
     now = now or datetime.now(UTC)
     cutoff = now - timedelta(seconds=settings.storage_upload_url_ttl_seconds + 60)
     res = await session.execute(
         delete(RecipeMedia).where(
-            RecipeMedia.media_kind == MediaKind.SOURCE_VIDEO,
+            RecipeMedia.media_kind.in_((MediaKind.SOURCE_VIDEO, MediaKind.COVER_IMAGE)),
             RecipeMedia.status == "pending",
             RecipeMedia.created_at < cutoff,
         )
@@ -328,7 +336,7 @@ async def delete_media(session: AsyncSession, user: User, media_id: uuid.UUID) -
                 extra={"details": {"job_id": str(active)}},
             )
     elif row.version_id is not None:
-        raise StateConflict("This clip is part of a published recipe version and is kept with it")
+        raise StateConflict("This media is part of a published recipe version and is kept with it")
     await session.delete(row)
     await session.flush()
     # Audit trail for creator deletions (PRD §13.2); ids only, never content.

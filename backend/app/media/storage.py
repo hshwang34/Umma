@@ -47,6 +47,8 @@ class ObjectStorage(Protocol):
 
     async def head(self, key: str) -> ObjectInfo | None: ...
 
+    async def read_prefix(self, key: str, length: int) -> bytes: ...
+
     async def download(self, key: str, dest: Path) -> None: ...
 
     async def upload(self, src: Path, key: str, *, content_type: str) -> None: ...
@@ -60,6 +62,10 @@ def source_key(owner_id: uuid.UUID, media_id: uuid.UUID, ext: str) -> str:
 
 def clip_key(owner_id: uuid.UUID, clip_id: uuid.UUID) -> str:
     return f"clips/{owner_id}/{clip_id}.mp4"
+
+
+def cover_key(owner_id: uuid.UUID, media_id: uuid.UUID) -> str:
+    return f"covers/{owner_id}/{media_id}.jpg"
 
 
 class S3Storage:
@@ -130,6 +136,16 @@ class S3Storage:
             )
 
         return await asyncio.to_thread(_head)
+
+    async def read_prefix(self, key: str, length: int) -> bytes:
+        """The first ``length`` bytes (a ranged GET), e.g. to check a file's magic bytes."""
+
+        def _read() -> bytes:
+            rng = f"bytes=0-{length - 1}"
+            res = self._client.get_object(Bucket=self.bucket, Key=key, Range=rng)
+            return res["Body"].read(length)
+
+        return await asyncio.to_thread(_read)
 
     async def download(self, key: str, dest: Path) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)

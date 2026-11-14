@@ -16,7 +16,7 @@ else
 SIM_UDID = $$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin); print([x['udid'] for k,v in d['devices'].items() if k.endswith('iOS-$(subst .,-,$(SIM_OS))') for x in v if x['name']=='$(SIM_NAME)'][0])")
 endif
 
-.PHONY: check backend-check ai-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed ios-project
+.PHONY: check backend-check ai-live-smoke voice-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed covers ios-project
 
 check: backend-check ios-check
 
@@ -25,6 +25,9 @@ backend-check:
 
 ai-live-smoke:
 	$(MAKE) -C backend ai-live-smoke
+
+voice-live-smoke:
+	$(MAKE) -C backend voice-live-smoke
 
 env:
 	$(MAKE) -C backend env
@@ -44,6 +47,9 @@ backend-worker:
 seed:
 	$(MAKE) -C backend seed
 
+covers:
+	$(MAKE) -C backend covers
+
 ios-project:
 	cd ios && xcodegen generate
 
@@ -51,9 +57,11 @@ ios-project:
 # it embeds the keychain-access-groups entitlement, which the simulator Keychain requires (-34018).
 # -parallel-testing-enabled NO: parallel testing boots a simulator clone per worker.
 ios-check: ios-project
-	cd ios && UDID=$(SIM_UDID) && xcodebuild test -project Umma.xcodeproj -scheme Umma \
+	cd ios && UDID=$(SIM_UDID) && rm -rf build/ios-check.xcresult && { xcodebuild test -project Umma.xcodeproj -scheme Umma \
 		-destination "platform=iOS Simulator,id=$$UDID" -parallel-testing-enabled NO \
-		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet
+		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet \
+		-resultBundlePath build/ios-check.xcresult \
+		|| { python3 scripts/print-test-failures.py build/ios-check.xcresult; exit 1; }; }
 
 # Live smoke: fresh install → two-step dev sign-in (code read from the backend log) → seeded
 # recipe. Needs `make backend-dev` running with its log at SMOKE_LOG (default below).

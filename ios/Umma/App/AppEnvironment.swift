@@ -29,8 +29,9 @@ final class AppEnvironment {
     let audio: any AudioOutput
     /// Brief 012: "Run voice on this iPhone".
     let voiceSettings: VoiceSettings
-    /// Builds the Free (on-device) voice transport; Paid wraps it until brief 012 PR 2.
+    /// Builds the Free (on-device) voice transport, and the Paid one that wraps it as fallback.
     let makeFreeVoiceTransport: @MainActor () -> any VoiceTransport
+    let makePaidVoiceTransport: @MainActor (any VoiceTransport) -> any VoiceTransport
     /// Brief 005: open cooking session (resume banner, floating pill, full-screen cooking view).
     let cooking: CookingSessionStore
 
@@ -41,7 +42,9 @@ final class AppEnvironment {
     private(set) var pendingDeepLink: DeepLink?
     /// Brief 015 first-run onboarding (`feature.onboarding`).
     /// On by default since brief 015 PR 9; `feature.onboarding = false` turns it off for demos.
-    var onboardingEnabled = UserDefaults.standard.object(forKey: AppEnvironment.onboardingFlagKey) as? Bool ?? true
+    /// `bool(forKey:)` also reads a launch argument (`-feature.onboarding NO` arrives as a string).
+    var onboardingEnabled = UserDefaults.standard.object(forKey: AppEnvironment.onboardingFlagKey) == nil
+        || UserDefaults.standard.bool(forKey: AppEnvironment.onboardingFlagKey)
     /// Set by onboarding's "Record your first recipe"; Profile opens a new draft and clears it.
     var requestNewRecipe = false
     nonisolated static let onboardingFlagKey = "feature.onboarding"
@@ -89,6 +92,7 @@ final class AppEnvironment {
          audio: any AudioOutput,
          voiceSettings: VoiceSettings? = nil,
          makeFreeVoiceTransport: @escaping @MainActor () -> any VoiceTransport = { FakeVoiceTransport(isAvailable: false) },
+         makePaidVoiceTransport: @escaping @MainActor (any VoiceTransport) -> any VoiceTransport = { $0 },
          sessionCache: SessionCaching = InMemorySessionCache()) {
         self.serverSettings = serverSettings
         self.api = api
@@ -100,6 +104,7 @@ final class AppEnvironment {
         self.audio = audio
         self.voiceSettings = voiceSettings ?? VoiceSettings()
         self.makeFreeVoiceTransport = makeFreeVoiceTransport
+        self.makePaidVoiceTransport = makePaidVoiceTransport
         cooking = CookingSessionStore(service: api, cache: sessionCache, owner: { [weak auth, weak serverSettings] in
             guard let user = auth?.user, let server = serverSettings?.effectiveBaseURLString, !server.isEmpty else { return nil }
             return SessionOwner(userId: user.id, server: server)
@@ -124,7 +129,8 @@ final class AppEnvironment {
         let transport = VoiceTierChoice.transport(
             entitlement: auth.user?.entitlement,
             runOnDevice: voiceSettings.runOnDevice,
-            makeFree: makeFreeVoiceTransport
+            makeFree: makeFreeVoiceTransport,
+            makePaid: makePaidVoiceTransport
         )
         return VoiceSession(transport: transport, config: config)
     }
@@ -207,6 +213,14 @@ final class AppEnvironment {
             makeFreeVoiceTransport: {
                 let onDevice = OnDeviceVoiceTransport(enabled: flags.phoneVoice)
                 return onDevice.isAvailable ? onDevice : FakeVoiceTransport(isAvailable: false)
+            },
+            // Paid (brief 012 PR 2): server voice through our backend, falling back to the above.
+            makePaidVoiceTransport: { fallback in
+                PaidVoiceTransport(
+                    server: HTTPPaidVoiceServer(baseURL: UserDefaultsBaseURLProvider(defaults: defaults), token: tokenStore),
+                    audio: EnginePaidVoiceAudio(),
+                    fallback: fallback
+                )
             },
             sessionCache: SessionCache()
         )

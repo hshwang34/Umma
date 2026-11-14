@@ -36,6 +36,7 @@ CARD_KEYS = {
     "prep_minutes",
     "cook_minutes",
     "cover_image_url",
+    "cover_credit",
     "published_at",
     "recipe_version_id",
     "version_number",
