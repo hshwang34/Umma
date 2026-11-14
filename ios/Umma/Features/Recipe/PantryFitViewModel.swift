@@ -194,6 +194,8 @@ final class PantryFitViewModel {
 
     let recipeVersionId: UUID
     let recipeTitle: String
+    /// Brief 020: the servings on the recipe page's dial. Nil means the recipe's own.
+    let servings: ServingsChoice?
     private(set) var phase: Phase = .loading
     /// Pantry snapshot used only to tell which matched items are stale.
     private(set) var pantryItems: [PantryItem] = []
@@ -216,10 +218,11 @@ final class PantryFitViewModel {
     var isStarting: Bool { starter?.isStarting ?? false }
     var startError: String? { starter?.errorMessage }
 
-    init(recipeVersionId: UUID, recipeTitle: String, service: PantryService, cooking: CookingService? = nil,
-         shopping: ShoppingService? = nil, now: @escaping @MainActor () -> Date = { Date() }) {
+    init(recipeVersionId: UUID, recipeTitle: String, servings: ServingsChoice? = nil, service: PantryService,
+         cooking: CookingService? = nil, shopping: ShoppingService? = nil, now: @escaping @MainActor () -> Date = { Date() }) {
         self.recipeVersionId = recipeVersionId
         self.recipeTitle = recipeTitle
+        self.servings = servings
         self.service = service
         self.cooking = cooking
         self.shopping = shopping
@@ -240,7 +243,7 @@ final class PantryFitViewModel {
         let generation = loadGeneration
         if fit == nil { phase = .loading }
         actionError = nil
-        async let fitResult = service.fit(recipeVersionId: recipeVersionId)
+        async let fitResult = service.fit(recipeVersionId: recipeVersionId, servings: servings?.servings)
         // Staleness is a nice-to-have: a failed pantry read only hides "Still have it".
         async let pantryResult = try? service.listPantry()
         do {
@@ -276,6 +279,15 @@ final class PantryFitViewModel {
 
     var coverageAccessibilityLabel: String? {
         coverageText.map { "\($0) in your pantry. This is a guide, not a guarantee." }
+    }
+
+    /// "For 2 servings · Scaled from 4" under the headline, only when the amounts are scaled.
+    /// Says what the server computed for when it tells us, so the line never disagrees with the fit.
+    var servingsText: String? {
+        guard let servings, servings.isScaled, fit != nil else { return nil }
+        let computedFor = fit?.servings ?? servings.servings
+        guard computedFor != servings.original else { return nil }
+        return "For \(ServingsDial.count(computedFor)) · \(ServingsDial.scaledFrom(servings.original))"
     }
 
     var missingCount: Int { requiredItems.filter { $0.status == .missing }.count }

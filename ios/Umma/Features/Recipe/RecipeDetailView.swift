@@ -58,7 +58,8 @@ struct RecipeDetailView: View {
         .navigationDestination(isPresented: $showPantryFit) {
             if let detail = model?.detail {
                 // The fit is for exactly the version on screen (sessions pin versions too).
-                PantryFitView(recipeVersionId: detail.recipeVersionId, recipeTitle: detail.title)
+                PantryFitView(recipeVersionId: detail.recipeVersionId, recipeTitle: detail.title,
+                              servings: model?.dial?.choice)
             }
         }
     }
@@ -78,6 +79,9 @@ struct RecipeDetailView: View {
                     prepMinutes: model.prepMinutes,
                     cookMinutes: model.cookMinutes,
                     servings: model.servings,
+                    dial: model.dial,
+                    onStepServings: { model.stepServings(up: $0) },
+                    onResetServings: { model.resetServings() },
                     photo: model.photo,
                     artSeed: recipeId,
                     heroBleed: Spacing.screen
@@ -88,7 +92,7 @@ struct RecipeDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, Spacing.xxl)
                 case .loaded(let detail):
-                    RecipeDetailContent(detail: detail)
+                    RecipeDetailContent(detail: detail, shownIngredients: model.ingredients)
                 case .error(let message, let retryable):
                     EmptyStateView(
                         systemImage: "wifi.exclamationmark",
@@ -321,6 +325,11 @@ struct RecipeHeaderView: View {
     let prepMinutes: Int?
     let cookMinutes: Int?
     let servings: Int?
+    /// Brief 020: the servings control replaces the "Serves N" pill once the recipe has loaded.
+    /// Nil in the draft preview and while loading.
+    var dial: ServingsDial? = nil
+    var onStepServings: (Bool) -> Void = { _ in }
+    var onResetServings: () -> Void = {}
     /// Brief 019: the photo, whether it opens the viewer, and its credit line.
     let photo: RecipePhotoPresentation
     /// Picks the placeholder gradient when there is no photo (the recipe id keeps it stable).
@@ -441,6 +450,9 @@ struct RecipeHeaderView: View {
                 HStack(spacing: Spacing.sm) { metadataPills }
                 VStack(alignment: .leading, spacing: Spacing.xs) { metadataPills }
             }
+            if let dial {
+                ServingsDialView(dial: dial, onStep: onStepServings, onReset: onResetServings)
+            }
         }
     }
 
@@ -452,15 +464,88 @@ struct RecipeHeaderView: View {
         if let cook = cookMinutes {
             MetadataPill(text: "Cook \(RecipeFormatting.minutes(cook))", systemImage: "flame")
         }
-        if let servings {
+        if let servings, dial == nil {
             MetadataPill(text: "Serves \(servings)", systemImage: "person.2")
         }
+    }
+}
+
+/// The servings control (brief 020): steps through the dial's stops, and says so whenever the
+/// amounts are not the creator's. VoiceOver gets one adjustable element ("2 servings").
+struct ServingsDialView: View {
+    let dial: ServingsDial
+    let onStep: (Bool) -> Void
+    let onReset: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(spacing: Spacing.sm) {
+                stepButton(up: false)
+                Label(dial.label, systemImage: "person.2")
+                    .font(SLFont.headline)
+                    .foregroundStyle(SLColor.textPrimary)
+                    .monospacedDigit()
+                    .frame(minWidth: 96)
+                stepButton(up: true)
+            }
+            .padding(.horizontal, Spacing.xs)
+            .background(SLColor.surfaceRaised, in: Capsule())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(dial.accessibilityLabel)
+            .accessibilityValue(dial.accessibilityValue)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: onStep(true)
+                case .decrement: onStep(false)
+                @unknown default: break
+                }
+            }
+            .accessibilityIdentifier("recipe.servings")
+
+            if let scaledFrom = dial.scaledFromText, let notice = dial.notice {
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    HStack(spacing: Spacing.sm) {
+                        MetadataPill(text: scaledFrom, systemImage: "arrow.up.left.and.arrow.down.right", style: .accent)
+                            .accessibilityIdentifier("recipe.scaledFrom")
+                        if let reset = dial.resetTitle {
+                            Button(reset, action: onReset)
+                                .font(SLFont.footnote.weight(.semibold))
+                                .foregroundStyle(SLColor.accent)
+                                .frame(minHeight: Metrics.minTapTarget)
+                                .accessibilityHint("Shows the amounts the creator wrote")
+                                .accessibilityIdentifier("recipe.servingsReset")
+                        }
+                    }
+                    Text(notice)
+                        .font(SLFont.footnote)
+                        .foregroundStyle(SLColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func stepButton(up: Bool) -> some View {
+        let enabled = (up ? dial.higher : dial.lower) != nil
+        return Button {
+            onStep(up)
+        } label: {
+            Image(systemName: up ? "plus" : "minus")
+                .font(SLFont.headline)
+                .frame(width: Metrics.minTapTarget, height: Metrics.minTapTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? SLColor.accent : SLColor.textSecondary.opacity(0.4))
+        .disabled(!enabled)
     }
 }
 
 /// Ingredients, steps, and notes — everything that needs the full `RecipeDetail`.
 struct RecipeDetailContent: View {
     let detail: RecipeDetail
+    /// Brief 020: the amounts for the servings on the dial. Nil shows the creator's (draft preview).
+    var shownIngredients: [Ingredient]? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.section) {
@@ -479,7 +564,7 @@ struct RecipeDetailContent: View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             sectionTitle("Ingredients")
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                ForEach(detail.ingredients) { ingredient in
+                ForEach(shownIngredients ?? detail.ingredients) { ingredient in
                     IngredientRow(ingredient: ingredient)
                 }
             }

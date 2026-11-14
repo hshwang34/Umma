@@ -408,6 +408,8 @@ struct PantryFit: Codable, Sendable, Hashable {
     let counts: FitCounts
     let items: [FitItem]
     let computedAt: Date
+    /// Brief 020: the servings the required amounts are for. Absent from older payloads.
+    var servings: Int? = nil
 }
 
 // MARK: - 409 DUPLICATE_PANTRY_ITEM

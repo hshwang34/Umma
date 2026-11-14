@@ -49,6 +49,41 @@ final class RecipeDetailViewModel {
     var versionNumber: Int? { detail?.versionNumber ?? card?.versionNumber }
     var summary: String? { detail?.summary ?? card?.summary }
     var servings: Int? { detail?.servings ?? card?.servings }
+
+    // MARK: Servings (brief 020)
+
+    /// What the cook dialled on this visit. Nil until they touch the dial: the recipe then shows
+    /// its own servings. Never saved; a published version is never changed.
+    private(set) var chosenServings: Int?
+
+    /// The servings control, once the recipe has loaded.
+    var dial: ServingsDial? {
+        detail.flatMap { ServingsDial(original: $0.servings, chosen: chosenServings) }
+    }
+
+    /// Ingredient amounts for the servings on the dial. At the recipe's own servings these are
+    /// exactly the creator's.
+    var ingredients: [Ingredient] {
+        guard let detail, let dial else { return detail?.ingredients ?? [] }
+        return detail.ingredients.map { $0.scaled(originalServings: dial.original, servings: dial.servings) }
+    }
+
+    /// A value that is not a stop on this recipe's dial is ignored.
+    func setServings(_ servings: Int) {
+        guard let dial, dial.stops.contains(servings) else { return }
+        chosenServings = servings
+    }
+
+    func stepServings(up: Bool) {
+        guard let next = up ? dial?.higher : dial?.lower else { return }
+        chosenServings = next
+    }
+
+    /// One tap back to the creator's amounts.
+    func resetServings() {
+        guard let dial else { return }
+        chosenServings = dial.original
+    }
     var prepMinutes: Int? { detail?.prepMinutes ?? card?.prepMinutes }
     var cookMinutes: Int? { detail?.cookMinutes ?? card?.cookMinutes }
     var coverImageURL: URL? { detail?.coverImageURL ?? card?.coverImageURL }
