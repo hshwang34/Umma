@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     # or error bodies, and it never leaves the backend. Each capability has its own model so a
     # price or quality change can be made per feature; ids are re-verified at build time.
     gemini_api_key: SecretStr | None = None
+    # Brief 019 stock photos. Optional: without a key, Pexels lookups are skipped. A SecretStr,
+    # so it never appears in reprs or logs; it is only sent in Pexels' Authorization header.
+    pexels_api_key: SecretStr | None = None
+    pexels_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     gemini_model_coach: str = "gemini-3.8-flash"
     gemini_model_inspect: str = "gemini-3.8-flash"
     gemini_model_substitution: str = "gemini-3.8-flash"
@@ -172,6 +176,9 @@ class Settings(BaseSettings):
     # month (declared size, counted at intent time, never refunded).
     video_max_pending_uploads: int = Field(default=2, ge=1)
     video_upload_bytes_per_month: int = Field(default=1024 * 1024 * 1024, gt=0)
+    # Brief 019 cover photos: JPEG only; bytes count toward the same monthly upload budget.
+    cover_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    cover_max_pending_uploads: int = Field(default=5, ge=1)
 
     # Extraction worker (``python -m app.workers.extraction``).
     worker_lease_seconds: int = Field(default=120, ge=10)

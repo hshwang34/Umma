@@ -7,7 +7,7 @@ SIM ?= iPhone 15
 SIM_NAME := $(shell ios/scripts/sim-pick.sh name "$(SIM)")
 SIM_OS ?= $(shell ios/scripts/sim-pick.sh os "$(SIM)")
 
-.PHONY: check backend-check ai-live-smoke voice-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed ios-project
+.PHONY: check backend-check ai-live-smoke voice-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed covers ios-project
 
 check: backend-check ios-check
 
@@ -38,15 +38,20 @@ backend-worker:
 seed:
 	$(MAKE) -C backend seed
 
+covers:
+	$(MAKE) -C backend covers
+
 ios-project:
 	cd ios && xcodegen generate
 
 # Ad-hoc signing (identity "-") needs no certificate or profile, but unlike CODE_SIGNING_ALLOWED=NO
 # it embeds the keychain-access-groups entitlement, which the simulator Keychain requires (-34018).
 ios-check: ios-project
-	cd ios && xcodebuild test -project Umma.xcodeproj -scheme Umma \
+	cd ios && rm -rf build/ios-check.xcresult && xcodebuild test -project Umma.xcodeproj -scheme Umma \
 		-destination 'platform=iOS Simulator,name=$(SIM_NAME),OS=$(SIM_OS)' \
-		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet
+		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet \
+		-resultBundlePath build/ios-check.xcresult \
+		|| { python3 scripts/print-test-failures.py build/ios-check.xcresult; exit 1; }
 
 # Live smoke: fresh install → two-step dev sign-in (code read from the backend log) → seeded
 # recipe. Needs `make backend-dev` running with its log at SMOKE_LOG (default below).

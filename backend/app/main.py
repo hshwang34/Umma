@@ -22,6 +22,7 @@ from app.core.errors import install_error_handlers
 from app.core.logging import CorrelationIdMiddleware, configure_logging
 from app.core.security import DevAuthProvider
 from app.db.engine import make_engine, make_sessionmaker
+from app.domains.recipes import stock_photos
 from app.domains.users.apple import AppleIdentityVerifier, http_key_fetcher
 from app.domains.users.google import GoogleIdentityVerifier
 from app.media.storage import build_storage
@@ -71,6 +72,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.live_token_minter = build_live_minter(settings)
     # Object storage for creator video and clips (brief 008). Building the client is offline.
     app.state.storage = build_storage(settings)
+    # Brief 019: Pexels stock photos after a first publish; None (skipped) without a key.
+    app.state.stock_photos = stock_photos.build_client(settings)
     app.state.auth_provider = None
     # Paid server voice (brief 012 PR 2): None when its key is absent (the routes then refuse).
     app.state.voice_stt = build_stt(settings)

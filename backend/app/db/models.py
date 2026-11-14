@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -16,6 +16,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -87,6 +88,7 @@ class PantrySource(enum.StrEnum):
     VOICE = "voice"
     PHOTO = "photo"
     LIVE = "live"  # auto-saved from a live pantry scan (brief 016)
+    RECEIPT = "receipt"  # auto-saved from a grocery receipt photo (brief 017)
 
 
 class StorageLocation(enum.StrEnum):
@@ -207,6 +209,15 @@ class Recipe(TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(Text)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     cover_image_url: Mapped[str | None] = mapped_column(Text)
+    # Brief 019: the latest version's uploaded cover (listing mirror; reads use the version's),
+    # and a Pexels stock photo stored once after publish or by backfill (never read live).
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
+    )
+    stock_photo_url: Mapped[str | None] = mapped_column(Text)
+    stock_photo_credit_name: Mapped[str | None] = mapped_column(String(200))
+    stock_photo_credit_url: Mapped[str | None] = mapped_column(Text)
+    stock_photo_id: Mapped[str | None] = mapped_column(String(64))
     latest_version_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recipe_versions.id", use_alter=True, ondelete="SET NULL")
     )
@@ -260,6 +271,15 @@ class RecipeVersion(CreatedAtMixin, Base):
     cover_image_url: Mapped[str | None] = mapped_column(Text)
     source_video_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
+    )
+    # Brief 019: the creator's uploaded cover photo pinned at publish. The media row is kept
+    # while a version points at it (``delete_media`` refuses), so SET NULL never fires on a
+    # live version.
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
+    )
+    cover_media: Mapped[RecipeMedia | None] = relationship(
+        foreign_keys=[cover_media_id], lazy="joined"
     )
 
 
@@ -362,6 +382,10 @@ class RecipeDraft(TimestampMixin, Base):
     )
     structured_draft_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
+    )
+    # Brief 019: the draft's confirmed cover photo (set only by the cover routes).
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
     )
     status: Mapped[DraftStatus] = mapped_column(
         _enum(DraftStatus, "draft_status"), nullable=False, default=DraftStatus.EDITING
@@ -683,6 +707,25 @@ class PantryLiveScan(CreatedAtMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+
+
+class PantryReceipt(CreatedAtMixin, Base):
+    """One receipt that changed the pantry (brief 017). The photo is never stored.
+    ``receipt_hash`` is what makes a second photo of the same receipt a no-op; it is NULL unless
+    the receipt printed a date, a store and a total (anything less is too weak to identify).
+    ``result_json`` holds the first answer (replayed on a repeat) and what an undo needs."""
+
+    __tablename__ = "pantry_receipts"
+    __table_args__ = (UniqueConstraint("owner_user_id", "receipt_hash"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    receipt_hash: Mapped[str | None] = mapped_column(String(64))
+    purchased_on: Mapped[date | None] = mapped_column(Date)
+    store: Mapped[str | None] = mapped_column(String(120))
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
 class PantryLiveScanItem(CreatedAtMixin, Base):

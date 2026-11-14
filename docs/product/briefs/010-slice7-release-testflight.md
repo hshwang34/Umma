@@ -1,6 +1,6 @@
 # 010 — Slice 7: hardening + public TestFlight beta
 
-**Status:** approved · **Owner:** PM · **PR:** — · **Updated:** 2026-10-28
+**Status:** approved, building (PM go 2026-11-14; Google sign-in added, #33) · **Owner:** PM · **PR:** — · **Updated:** 2026-11-14
 
 ## Problem
 The app runs only on a laptop with dev sign-in. Nobody outside can try it.
@@ -16,6 +16,11 @@ A stranger taps the link, installs, signs in with Apple, and gets through the PR
 - [ ] **Sign in with Apple:** a nonce-bound identity token is verified server-side (Apple JWKS,
       aud/iss/exp/nonce), and `AUTH_MODE=apple` is used in production. Dev-login stays dev/test
       only. Existing tests are unchanged.
+- [ ] **Sign in with Google** (added 2026-11-14, DECISIONS #33): a second button under Sign in
+      with Apple. The phone signs in through the system web sign-in sheet (no Google SDK in the
+      app) and sends Google's ID token; the backend verifies it (Google JWKS,
+      aud/iss/exp/nonce) at `POST /v1/auth/google`. Apple and Google sign-ins are separate
+      accounts, never merged by email.
 - [ ] **Account deletion** in Profile deletes the user's data and media and revokes the Apple
       token (`/auth/revoke`) (guideline 5.1.1(v)).
 - [ ] **Review access:** a production-safe, single-account review login (secret code, rate
@@ -44,6 +49,39 @@ App Store submission, payments, Android, analytics SDKs.
 2. **Support / privacy contact email shown to testers and Apple?** **Recommendation:**
    jacogoby@gmail.com (personal), or a new alias you create.
    → *Answer:* **jacogoby@gmail.com** (DECISIONS #20).
+
+## PR sequence
+The PM's go (2026-11-14): host the backend, replace the dev sign-in code with Sign in with Apple
+for testers, and clear every blocker to an internal and then an external TestFlight build.
+
+0. Docs: this sequence.
+1. Backend: Apple identity-token verifier (JWKS, aud/iss/exp/nonce) and `POST /v1/auth/apple`,
+   mounted only when `AUTH_MODE=apple`.
+2. Backend: authorization-code exchange, stored Apple refresh token, and `DELETE /v1/me`
+   (data, queued media, Apple token revoke).
+3. Backend: review login (one account, secret code, rate limited, its own sandbox data).
+4. Backend: per-IP and per-user rate limits, and a production-config check for the cost guard.
+5. Backend: Dockerfile, `fly.toml` (web and worker, alembic release command, health checks)
+   and `docs/release/backend.md`. The first deploy needs the PM's go in the session.
+6. iOS: Sign in with Apple (entitlement, button, `AuthStore` flow). Dev sign-in stays in debug
+   builds only.
+6a. Backend: Google ID-token verifier and `POST /v1/auth/google`, stacked on PR 1.
+6b. iOS: Sign in with Google button and web sign-in sheet (PKCE), stacked on PR 6.
+7. iOS: delete account in Profile.
+8. iOS: release config (production API URL, server override hidden outside debug, build
+   number), `make release-ios` and `docs/release/testflight.md`.
+9. iOS: permission-denied and error-state pass, App Privacy answers and review notes.
+
+Internal TestFlight needs PRs 1, 5, 6 and 8. External adds 2, 3, 4, 6a, 6b, 7 and 9.
+
+**Human steps (PM):**
+- Developer portal: App ID `com.umma.ios` with Sign in with Apple and Associated Domains.
+- Developer portal: a Sign in with Apple key (`.p8`), needed for token revoke in PR 2.
+- App Store Connect: the app record (SKU `umma-ios-001`), then Test Information and the
+  external group.
+- Google Cloud (personal account): OAuth consent screen and an iOS OAuth client for
+  `com.umma.ios`. The client ID is not a secret.
+- A Neon project on a personal account, and the go for the first Fly deploy.
 
 ## Engineering decisions (filled in by the lead while building)
 - …

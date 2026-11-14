@@ -57,6 +57,15 @@ class StepOut(BaseModel):
     evidence_origin: EvidenceOrigin = "creator_authored"
 
 
+class CoverCredit(BaseModel):
+    """Brief 019: shown under the recipe photo when it is a stock photo ("Photo: {name} /
+    Pexels", linking to ``url``). Null whenever the creator's own photo is shown."""
+
+    name: str
+    url: str
+    source: Literal["pexels"] = "pexels"
+
+
 class RecipeCard(BaseModel):
     recipe_id: uuid.UUID
     slug: str
@@ -68,6 +77,7 @@ class RecipeCard(BaseModel):
     prep_minutes: int | None
     cook_minutes: int | None
     cover_image_url: str | None
+    cover_credit: CoverCredit | None = None
     published_at: datetime
     recipe_version_id: uuid.UUID
     version_number: int
@@ -97,6 +107,7 @@ class RecipeDetail(BaseModel):
     prep_minutes: int | None
     cook_minutes: int | None
     cover_image_url: str | None
+    cover_credit: CoverCredit | None = None
     ingredients: list[IngredientOut]
     steps: list[StepOut]
     creator_notes: list[str]
