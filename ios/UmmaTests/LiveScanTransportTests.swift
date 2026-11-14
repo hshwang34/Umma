@@ -309,9 +309,11 @@ final class GeminiLiveTransportTests: XCTestCase {
         transport.send(frame: jpeg)               // t=500 dropped
         await waitForSent(3)
         clock.advance(byMs: 300)
+        await waitForSent(4)                      // the keep-alive goes out before the frame and its nudge
         transport.send(frame: jpeg)               // t=800 sent (within the 250 ms jitter tolerance) → nudge
         await waitForSent(6)
         clock.advance(byMs: 1000)
+        await waitForSent(7)
         transport.send(frame: jpeg)               // t=1800 sent
         XCTAssertEqual(transport.framesSent, 3)
         // FakeVoiceClock ticks once per advance, so three keep-alive audio chunks are interleaved.
