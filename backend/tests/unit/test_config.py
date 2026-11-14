@@ -142,3 +142,13 @@ def test_ci_workflow_sets_auth_mode_and_secret() -> None:
 def test_placeholder_secret_is_refused() -> None:
     with pytest.raises(ValidationError):
         Settings(jwt_secret="change-me-dev-only-32-bytes-minimum-please", auth_mode="dev")
+
+
+def test_google_keys_url_must_be_https() -> None:
+    with pytest.raises(ValidationError, match="GOOGLE_KEYS_URL"):
+        Settings(
+            _env_file=None,
+            jwt_secret=GOOD_SECRET,
+            auth_mode="apple",
+            google_keys_url="http://www.googleapis.com/oauth2/v3/certs",
+        )

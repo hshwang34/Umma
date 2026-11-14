@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Sign in with Apple (brief 010): identity tokens must be issued for this bundle id.
     apple_bundle_id: str = "com.umma.ios"
     apple_keys_url: str = "https://appleid.apple.com/auth/keys"
+    # Sign in with Google (DECISIONS #33): the iOS OAuth client id ID tokens must be issued for.
+    # Not a secret. Unset means the Google route does not exist.
+    google_ios_client_id: str | None = None
+    google_keys_url: str = "https://www.googleapis.com/oauth2/v3/certs"
     dev_login_echo_code: bool = False
     # Brute-force budget for the dev sign-in code (per email, across challenges).
     dev_login_cooldown_seconds: int = 30
@@ -207,6 +211,8 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_MODE=dev is only allowed when ENVIRONMENT is dev or test")
         if not self.apple_keys_url.startswith("https://"):
             raise ValueError("APPLE_KEYS_URL must be https://")
+        if not self.google_keys_url.startswith("https://"):
+            raise ValueError("GOOGLE_KEYS_URL must be https://")
         if self.ai_month_soft_cap_usd > self.ai_month_hard_cap_usd:
             raise ValueError("AI_MONTH_SOFT_CAP_USD must not exceed AI_MONTH_HARD_CAP_USD")
         if self.live_token_start_seconds > self.live_token_ttl_seconds:
