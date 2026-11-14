@@ -118,6 +118,10 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         let create = app.buttons["profile.createRecipe"]
         XCTAssertTrue(create.waitForExistence(timeout: 10), "Profile has no Create recipe")
         create.tap()
+        // Brief 014: New recipe opens a chooser; typing it in is today's editor.
+        let typeIn = app.buttons["newRecipe.typeIn"]
+        XCTAssertTrue(typeIn.waitForExistence(timeout: 5), "New recipe chooser did not open")
+        typeIn.tap()
 
         // Title
         // Type-agnostic: a vertical-axis TextField may surface as a text view or a text field.
