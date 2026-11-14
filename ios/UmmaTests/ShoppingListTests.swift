@@ -182,10 +182,6 @@ final class ShoppingListTests: XCTestCase {
         XCTAssertTrue(model.actionError?.hasPrefix("Removed Chicken thighs, but couldn’t add it to your shopping list:") ?? false)
     }
 
-    func testTheInCookSwapOfferIsNotBuiltYet() {
-        XCTAssertFalse(MissingIngredientOffer.isAvailable)
-    }
-
     private static func keyFitJSON(inPantry: Bool) -> String {
         let item = inPantry ? "\"\(PantryFixtures.gochujangId)\"" : "null"
         let seen = inPantry ? "\"2026-11-08T09:00:00Z\"" : "null"

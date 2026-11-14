@@ -571,6 +571,9 @@ struct AskResponse: Codable, Sendable, Hashable {
     let safetyNotice: String?
     let proposedAction: ProposedAction?
     let requiresConfirmation: Bool
+    /// Brief 017: set when the cook said they don't have an ingredient. Describes what they may
+    /// confirm; nothing has happened yet.
+    let missingIngredient: MissingIngredient?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -585,6 +588,84 @@ struct AskResponse: Codable, Sendable, Hashable {
         var proposal = try? c.decodeIfPresent(ProposedAction.self, forKey: .proposedAction)
         proposal?.groundedRevision = groundedSessionRevision
         proposedAction = proposal
+        requiresConfirmation = try c.decodeIfPresent(Bool.self, forKey: .requiresConfirmation) ?? true
+        // An offer the app can't read is dropped; the answer text still says what the coach found.
+        missingIngredient = try? c.decodeIfPresent(MissingIngredient.self, forKey: .missingIngredient)
+    }
+}
+
+/// `missing_ingredient` on a coach answer (brief 017): "I don’t have that" while cooking. Read
+/// only. Each part names an existing confirmed path: `swap.adaptation` for the
+/// `approve_adaptation` command, `shoppingName` for `POST /shopping-list`, `pantryItemId` for
+/// `DELETE /pantry/{id}`.
+struct MissingIngredient: Codable, Sendable, Hashable {
+    enum Status: String, Codable, Sendable, Hashable {
+        /// One ingredient is named; the other fields say what the cook may confirm.
+        case offer
+        /// The coach is asking which ingredient (`candidates`).
+        case which
+        case unknown
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Status(rawValue: raw) ?? .unknown
+        }
+    }
+
+    struct Candidate: Codable, Sendable, Hashable, Identifiable {
+        let ingredientRef: String
+        let name: String
+        var id: String { ingredientRef }
+    }
+
+    struct Swap: Codable, Sendable, Hashable {
+        let candidate: String
+        let ratioOrAmount: String
+        /// `close_equivalent` and so on; kept as text so a new kind never fails the answer.
+        let kind: String?
+        let inPantry: Bool
+        let risks: [String]
+        let allergyWarning: String?
+        /// Exactly the `adaptation` body of the `approve_adaptation` command.
+        let adaptation: AdaptationInput
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            candidate = try c.decode(String.self, forKey: .candidate)
+            ratioOrAmount = try c.decodeIfPresent(String.self, forKey: .ratioOrAmount) ?? ""
+            kind = try c.decodeIfPresent(String.self, forKey: .kind)
+            inPantry = try c.decodeIfPresent(Bool.self, forKey: .inPantry) ?? false
+            risks = try c.decodeIfPresent([String].self, forKey: .risks) ?? []
+            allergyWarning = try c.decodeIfPresent(String.self, forKey: .allergyWarning)
+            adaptation = try c.decode(AdaptationInput.self, forKey: .adaptation)
+        }
+    }
+
+    let status: Status
+    let ingredientRef: String?
+    let name: String?
+    let optional: Bool
+    let candidates: [Candidate]
+    let swap: Swap?
+    let noSwapReason: String?
+    let shoppingName: String?
+    let onShoppingList: Bool
+    let pantryItemId: UUID?
+    let requiresConfirmation: Bool
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decode(Status.self, forKey: .status)
+        ingredientRef = try c.decodeIfPresent(String.self, forKey: .ingredientRef)
+        name = try c.decodeIfPresent(String.self, forKey: .name)
+        optional = try c.decodeIfPresent(Bool.self, forKey: .optional) ?? false
+        candidates = try c.decodeIfPresent([Candidate].self, forKey: .candidates) ?? []
+        // A swap the app can't read is not offered; the rest of the offer still stands.
+        swap = try? c.decodeIfPresent(Swap.self, forKey: .swap)
+        noSwapReason = try c.decodeIfPresent(String.self, forKey: .noSwapReason)
+        shoppingName = try c.decodeIfPresent(String.self, forKey: .shoppingName)
+        onShoppingList = try c.decodeIfPresent(Bool.self, forKey: .onShoppingList) ?? false
+        pantryItemId = try? c.decodeIfPresent(UUID.self, forKey: .pantryItemId)
         requiresConfirmation = try c.decodeIfPresent(Bool.self, forKey: .requiresConfirmation) ?? true
     }
 }

@@ -415,6 +415,15 @@ final class CookingViewModel: CookingSessionClient {
     }
 
     /// Undo a swap mid-cook (SUB-03): the server restores the original step text.
+    /// "Use this swap" on the coach's missing-ingredient offer (brief 017): one confirmed
+    /// `approve_adaptation` command, like every other change to the session.
+    func approveAdaptation(_ adaptation: AdaptationInput) async -> Bool {
+        guard canSendCommands else { return false }
+        var command = SessionCommand.confirmed(.approveAdaptation, revision: revisionOrZero, source: .iosAssistant)
+        command.adaptation = adaptation
+        return await run(command)
+    }
+
     func revertAdaptation(id: UUID) async {
         var command = SessionCommand.confirmed(.revertAdaptation, revision: revisionOrZero)
         command.adaptationId = id
