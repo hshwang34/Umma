@@ -21,11 +21,13 @@ final class CaptureScreensTests: XCTestCase {
         XCTAssertTrue(options[0].isEnabled && options[2].isEnabled)
     }
 
-    func testCaptureFlagIsOffUntilSet() {
+    func testCaptureFlagIsOnUnlessTurnedOff() {
         let defaults = UserDefaults(suiteName: "capture.flag.\(UUID().uuidString)")!
+        XCTAssertTrue(CaptureFeature.isEnabled(defaults))
+        defaults.set(false, forKey: CaptureFeature.flagKey)
         XCTAssertFalse(CaptureFeature.isEnabled(defaults))
-        defaults.set("YES", forKey: CaptureFeature.flagKey)
-        XCTAssertTrue(CaptureFeature.isEnabled(defaults), "a launch argument arrives as a string")
+        defaults.set("NO", forKey: CaptureFeature.flagKey)
+        XCTAssertFalse(CaptureFeature.isEnabled(defaults), "a launch argument arrives as a string")
     }
 
     func testBeforeStartNothingIsLiveAndTheScreenMaySleep() {

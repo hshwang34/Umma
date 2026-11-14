@@ -4,10 +4,10 @@ enum CaptureFeature {
     /// `feature.voiceCapture`: Profile → New recipe opens the chooser with Record while cooking.
     nonisolated static let flagKey = "feature.voiceCapture"
 
-    /// Off until the draft step lands. `bool(forKey:)` also reads `-feature.voiceCapture YES` from
-    /// the launch arguments (they arrive as strings).
+    /// On by default since the draft step landed; `-feature.voiceCapture NO` hides it for demos.
     static func isEnabled(_ defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: flagKey)
+        // `bool(forKey:)` also reads `-feature.voiceCapture NO` from the launch arguments.
+        defaults.object(forKey: flagKey) == nil || defaults.bool(forKey: flagKey)
     }
 }
 
