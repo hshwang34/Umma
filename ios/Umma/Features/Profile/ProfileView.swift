@@ -121,7 +121,7 @@ struct ProfileView: View {
         .onAppear { pendingCaptures = environment.pendingCaptures() }
         .task {
             // Brief 014: a discard that couldn't reach the server is retried here.
-            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+            await CaptureCoordinator.retryPendingDiscards(api: environment.api, journal: environment.captureJournal, userId: environment.auth.user?.id)
             pendingCaptures = environment.pendingCaptures()
         }
         .task(id: environment.requestNewRecipe) {
@@ -176,7 +176,7 @@ struct ProfileView: View {
                 CaptureResumeRow(record: record) {
                     if record.discardPending == true {
                         Task {
-                            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+                            await CaptureCoordinator.retryPendingDiscards(api: environment.api, journal: environment.captureJournal, userId: environment.auth.user?.id)
                             pendingCaptures = environment.pendingCaptures()
                         }
                     } else {
