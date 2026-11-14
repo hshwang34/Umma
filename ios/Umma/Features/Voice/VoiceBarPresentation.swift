@@ -53,7 +53,8 @@ struct VoiceBarPresentation: Equatable {
          partial: VoiceSegment?,
          inputLabel: String,
          notice: String?,
-         lineLimit: Int = 3) {
+         lineLimit: Int = 3,
+         showsControls: Bool = true) {
         switch state {
         case .idle, .ended: mode = .ended
         case .starting: mode = .starting
@@ -87,7 +88,8 @@ struct VoiceBarPresentation: Equatable {
         let live = partial.map { [Line(id: "partial", speaker: .user, text: $0.text, isPartial: true)] } ?? []
         lines = Array((finals + live).suffix(max(lineLimit, 0)))
 
-        let isLive = mode != .ended
+        // A screen with its own Pause / Done (brief 014 recording) hides the bar's controls.
+        let isLive = mode != .ended && showsControls
         showsPauseToggle = isLive && mode != .starting
         pauseToggleTitle = mode == .paused ? "Resume" : "Pause"
         pauseToggleSymbol = mode == .paused ? "play.fill" : "pause.fill"
@@ -95,14 +97,15 @@ struct VoiceBarPresentation: Equatable {
     }
 
     @MainActor
-    init(session: VoiceSession, lineLimit: Int = 3) {
+    init(session: VoiceSession, lineLimit: Int = 3, showsControls: Bool = true) {
         self.init(state: session.state,
                   userCaptions: session.userCaptions,
                   assistantCaptions: session.assistantCaptions,
                   partial: session.partial,
                   inputLabel: session.inputLabel,
                   notice: session.notice,
-                  lineLimit: lineLimit)
+                  lineLimit: lineLimit,
+                  showsControls: showsControls)
     }
 
     private static func status(_ mode: Mode) -> String {
