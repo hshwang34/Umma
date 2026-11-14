@@ -6,7 +6,8 @@ is always parsed, never trusted raw. Providers may implement several Protocols o
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -110,6 +111,41 @@ class PantryObservation(StrictModel):
     unknowns: list[str] = Field(
         default_factory=list, description="What could not be identified (PRD §8.3)"
     )
+
+
+# --- Brief 017 receipt reading ------------------------------------------------------------
+
+MAX_RECEIPT_LINES = 80
+
+
+class ReceiptRequest(StrictModel):
+    """One receipt photo, in memory only (never stored or logged); like the pantry photo it is
+    excluded from dumps and reprs."""
+
+    image_bytes: bytes = Field(min_length=1, exclude=True, repr=False)
+    image_mime_type: str = "image/jpeg"
+
+
+class ReceiptLine(StrictModel):
+    """One printed line. ``name`` is null when the line could not be read with confidence: such a
+    line is reported, never guessed. ``count`` is packs bought; ``quantity``/``unit`` are set only
+    when the receipt prints a weight or volume."""
+
+    raw_text: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=80)
+    is_food: bool
+    count: int | None = Field(default=None, ge=1)
+    quantity: Decimal | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, max_length=16)
+    confidence: Confidence = Field(ge=0.0, le=1.0)
+
+
+class ReceiptDraft(StrictModel):
+    purchased_on: date | None = None
+    store: str | None = Field(default=None, max_length=120)
+    total: Decimal | None = None
+    lines: list[ReceiptLine] = Field(default_factory=list, max_length=MAX_RECEIPT_LINES)
+    demo: bool = Field(default=False, description="True when a fixture answered, not a real read")
 
 
 # --- 8.4 Substitution ---------------------------------------------------------------------
@@ -394,6 +430,8 @@ class RecipeExtractor(Protocol):
 @runtime_checkable
 class PantryExtractor(Protocol):
     async def observe(self, request: PantryObservationRequest) -> PantryObservation: ...
+
+    async def read_receipt(self, request: ReceiptRequest) -> ReceiptDraft: ...
 
 
 @runtime_checkable
