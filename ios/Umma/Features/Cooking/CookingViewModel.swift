@@ -281,7 +281,7 @@ final class CookingViewModel: CookingSessionClient {
                 onSessionGone?(sessionId)
                 return
             }
-            let message = apiError?.userMessage ?? error.localizedDescription
+            let message = error.userFacingMessage
             if session == nil || isProvisional {
                 // A cached copy that the server wouldn't confirm: don't sit read-only forever.
                 phase = .failed(message)
@@ -348,7 +348,7 @@ final class CookingViewModel: CookingSessionClient {
                 if !isInvalidated { handle(error) }
                 return
             } catch {
-                if !isInvalidated { errorMessage = error.localizedDescription }
+                if !isInvalidated { errorMessage = error.userFacingMessage }
                 return
             }
         }
@@ -437,7 +437,7 @@ final class CookingViewModel: CookingSessionClient {
                 }
                 return false
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = error.userFacingMessage
                 return false
             }
         }
@@ -527,7 +527,7 @@ final class CookingViewModel: CookingSessionClient {
             if !isInvalidated { handle(error) }
             return false
         } catch {
-            if !isInvalidated { errorMessage = error.localizedDescription }
+            if !isInvalidated { errorMessage = error.userFacingMessage }
             return false
         }
     }

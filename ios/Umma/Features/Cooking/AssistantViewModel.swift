@@ -67,7 +67,7 @@ final class AssistantViewModel {
         } catch let error as APIError {
             errorMessage = Self.message(for: error)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

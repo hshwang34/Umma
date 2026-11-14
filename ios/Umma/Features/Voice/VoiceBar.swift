@@ -32,6 +32,7 @@ struct VoiceBarContent: View {
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.textSecondary)
             }
+            if presentation.showsOpenSettings { OpenSettingsButton() }
             controls
         }
         .padding(Spacing.lg)

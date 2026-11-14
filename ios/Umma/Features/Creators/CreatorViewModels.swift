@@ -32,7 +32,7 @@ final class CreatorProfileViewModel {
         } catch let error as APIError where error.isNotFound {
             phase = .notFound
         } catch {
-            phase = .error((error as? APIError)?.userMessage ?? error.localizedDescription)
+            phase = .error(error.userFacingMessage)
         }
     }
 
@@ -51,7 +51,7 @@ final class CreatorProfileViewModel {
             onFollowChanged?()
         } catch {
             profile?.creator.isFollowing = was
-            followError = "Couldn’t update: \((error as? APIError)?.userMessage ?? error.localizedDescription)"
+            followError = "Couldn’t update: \(error.userFacingMessage)"
         }
     }
 }
@@ -81,7 +81,7 @@ final class FollowingListViewModel {
         } catch let error as APIError where error == .cancelled {
             return
         } catch {
-            phase = .error((error as? APIError)?.userMessage ?? error.localizedDescription)
+            phase = .error(error.userFacingMessage)
         }
     }
 
@@ -97,7 +97,7 @@ final class FollowingListViewModel {
             onFollowChanged?()  // already gone on the server
         } catch {
             creators.insert(removed, at: min(index, creators.count))
-            actionError = "Couldn’t unfollow: \((error as? APIError)?.userMessage ?? error.localizedDescription)"
+            actionError = "Couldn’t unfollow: \(error.userFacingMessage)"
         }
     }
 }
@@ -139,7 +139,7 @@ final class TastePreferencesViewModel {
         } catch let error as APIError where error == .cancelled {
             return
         } catch {
-            phase = .error((error as? APIError)?.userMessage ?? error.localizedDescription)
+            phase = .error(error.userFacingMessage)
         }
     }
 
@@ -163,7 +163,7 @@ final class TastePreferencesViewModel {
             skillLevel = saved.skillLevel
             return true
         } catch {
-            saveError = "Couldn’t save: \((error as? APIError)?.userMessage ?? error.localizedDescription)"
+            saveError = "Couldn’t save: \(error.userFacingMessage)"
             return false
         }
     }

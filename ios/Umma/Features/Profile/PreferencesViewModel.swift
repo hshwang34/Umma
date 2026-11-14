@@ -102,7 +102,7 @@ final class PreferencesViewModel {
         } catch let error as APIError where error == .cancelled {
             return
         } catch {
-            phase = .error((error as? APIError)?.userMessage ?? error.localizedDescription)
+            phase = .error(error.userFacingMessage)
         }
     }
 
@@ -139,7 +139,7 @@ final class PreferencesViewModel {
             return true
         } catch {
             preferences = previous
-            saveError = "Couldn’t save: \((error as? APIError)?.userMessage ?? error.localizedDescription)"
+            saveError = "Couldn’t save: \(error.userFacingMessage)"
             return false
         }
     }

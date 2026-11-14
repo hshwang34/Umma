@@ -129,7 +129,7 @@ struct ServerSettingsView: View {
         } catch let error as APIError {
             probe = .failed(error.userMessage)
         } catch {
-            probe = .failed(error.localizedDescription)
+            probe = .failed(error.userFacingMessage)
         }
     }
 }

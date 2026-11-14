@@ -72,6 +72,9 @@ struct RecordView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.lg) {
                 header(p)
+                if RecordPresentation.showsOpenSettings(phase: coordinator.phase, deniedPermission: coordinator.voice.deniedPermission) {
+                    OpenSettingsButton()
+                }
                 switch coordinator.phase {
                 case .idle:
                     startCard

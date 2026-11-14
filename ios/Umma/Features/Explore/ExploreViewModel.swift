@@ -155,7 +155,7 @@ final class ExploreViewModel {
         case .failure(let error):
             let apiError = error as? APIError
             if apiError == .cancelled { return }
-            let message = apiError?.userMessage ?? error.localizedDescription
+            let message = error.userFacingMessage
             let retryable = apiError?.isRetryable ?? true
             if cacheable, let cached = cache.load(), !cached.items.isEmpty {
                 cards = cached.items

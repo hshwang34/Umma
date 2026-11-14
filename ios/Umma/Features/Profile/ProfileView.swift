@@ -198,6 +198,10 @@ struct ProfileView: View {
                 Label(message, systemImage: "wifi.exclamationmark")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.warning)
+                Button("Try again") { Task { await model?.refresh() } }
+                    .font(SLFont.bodyEmphasis)
+                    .frame(minHeight: Metrics.minTapTarget)
+                    .accessibilityIdentifier("profile.myRecipes.retry")
             case .loaded:
                 if let model, model.recipes.isEmpty {
                     Text("Nothing published yet. Create a recipe, add ingredients and steps, then publish it.")
@@ -388,7 +392,7 @@ struct ProfileView: View {
         do {
             editor = try await DraftEditorViewModel.createNew(service: environment.api, creator: creator)
         } catch {
-            openError = (error as? APIError)?.userMessage ?? error.localizedDescription
+            openError = error.userFacingMessage
         }
     }
 
@@ -419,7 +423,7 @@ struct ProfileView: View {
         do {
             editor = try await DraftEditorViewModel.open(draftId: draft.id, service: environment.api, creator: creator)
         } catch {
-            openError = (error as? APIError)?.userMessage ?? error.localizedDescription
+            openError = error.userFacingMessage
         }
     }
 }

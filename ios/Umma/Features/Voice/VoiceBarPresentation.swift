@@ -34,6 +34,8 @@ struct VoiceBarPresentation: Equatable {
     let lines: [Line]
     let notice: String?
     let endedText: String?
+    /// Voice could not start because a permission is off: offer the way to Settings.
+    let showsOpenSettings: Bool
     let showsPauseToggle: Bool
     let pauseToggleTitle: String
     let pauseToggleSymbol: String
@@ -53,6 +55,7 @@ struct VoiceBarPresentation: Equatable {
          partial: VoiceSegment?,
          inputLabel: String,
          notice: String?,
+         deniedPermission: Bool = false,
          lineLimit: Int = 3,
          showsControls: Bool = true) {
         switch state {
@@ -80,7 +83,8 @@ struct VoiceBarPresentation: Equatable {
                           accessibilityLabel: "Listening through \(inputLabel)", isLive: true)
         }
         self.notice = notice
-        endedText = Self.endedText(state)
+        showsOpenSettings = deniedPermission && mode == .ended
+        endedText = Self.endedText(state, deniedPermission: showsOpenSettings)
 
         let finals = (userCaptions + assistantCaptions)
             .sorted { ($0.startMs, $0.id) < ($1.startMs, $1.id) }
@@ -104,6 +108,7 @@ struct VoiceBarPresentation: Equatable {
                   partial: session.partial,
                   inputLabel: session.inputLabel,
                   notice: session.notice,
+                  deniedPermission: session.deniedPermission,
                   lineLimit: lineLimit,
                   showsControls: showsControls)
     }
@@ -131,12 +136,13 @@ struct VoiceBarPresentation: Equatable {
         }
     }
 
-    private static func endedText(_ state: VoiceState) -> String? {
+    private static func endedText(_ state: VoiceState, deniedPermission: Bool) -> String? {
         guard case .ended(let reason) = state else { return nil }
         switch reason {
         case .stopped, .stopCommand: return "Voice is off."
         case .silenceTimeout: return "Voice turned off after a long quiet stretch."
-        case .failed(let message): return "Voice stopped: \(message)"
+        // A denied permission's message is already the whole explanation.
+        case .failed(let message): return deniedPermission ? message : "Voice stopped: \(message)"
         }
     }
 }

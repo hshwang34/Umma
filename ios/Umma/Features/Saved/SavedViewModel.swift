@@ -47,7 +47,7 @@ final class SavedViewModel {
         case .failure(let error):
             let apiError = error as? APIError
             if apiError == .cancelled { return }
-            phase = .error(message: apiError?.userMessage ?? error.localizedDescription, retryable: apiError?.isRetryable ?? true)
+            phase = .error(message: error.userFacingMessage, retryable: apiError?.isRetryable ?? true)
         }
     }
 }

@@ -370,7 +370,7 @@ struct SignInView: View {
             } catch let error as APIError {
                 errorMessage = error.userMessage
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = error.userFacingMessage
             }
         }
     }
@@ -383,7 +383,7 @@ struct SignInView: View {
         } catch let error as APIError {
             serverStatus = .unreachable(error.userMessage)
         } catch {
-            serverStatus = .unreachable(error.localizedDescription)
+            serverStatus = .unreachable(error.userFacingMessage)
         }
     }
 }
