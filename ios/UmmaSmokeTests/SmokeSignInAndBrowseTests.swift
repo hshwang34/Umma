@@ -177,7 +177,7 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         XCTAssertTrue(wait(for: save, enabled: true, timeout: 10))
         save.tap()
-        XCTAssertTrue(app.buttons["Unsave"].waitForExistence(timeout: 10), "save did not stick")
+        XCTAssertTrue(app.navigationBars.buttons["Saved"].waitForExistence(timeout: 10), "save did not stick")
         attach(app, "9-saved-detail")
 
         // Saved tab lists it

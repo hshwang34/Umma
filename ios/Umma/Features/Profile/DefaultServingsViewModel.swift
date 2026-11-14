@@ -20,7 +20,7 @@ struct DefaultServingsOption: Identifiable, Hashable, Sendable {
 @Observable
 final class DefaultServingsViewModel {
     static let title = "Default servings"
-    static let footer = "With default servings set, every recipe opens scaled to that number. You can still change it on the recipe."
+    static let footer = "Recipes open scaled to your default servings. You can still change it on any recipe."
 
     /// What the picker shows: the tapped value while it saves, otherwise the saved one.
     private(set) var selected: Int?
