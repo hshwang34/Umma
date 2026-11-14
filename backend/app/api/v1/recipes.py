@@ -9,7 +9,7 @@ from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
-from pydantic import AfterValidator, BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict, StrictInt
 
 from app.core.errors import NotFound
 from app.core.security import CurrentUser, OptionalUser, SettingsDep
@@ -101,15 +101,23 @@ async def get_recipe_version(
 class FitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Brief 020: the servings on the dial. Omitted or null means the recipe's own.
+    servings: StrictInt | None = None
+
 
 @versions_router.post("/{version_id}/fit", response_model=FitResult)
 async def fit_recipe_version(
     version_id: str, session: DbSession, user: CurrentUser, body: FitRequest | None = None
 ) -> FitResult:
     """Available / uncertain / missing per ingredient against the caller's confirmed pantry
-    (FIT-01..03). Same access rule as ``GET /recipe-versions/{id}``."""
+    (FIT-01..03), judged against the amounts for ``servings`` (brief 020). Same access rule as
+    ``GET /recipe-versions/{id}``."""
     return await fit_version(
-        session, user, _uuid_or_404(version_id, "Recipe version"), datetime.now(UTC)
+        session,
+        user,
+        _uuid_or_404(version_id, "Recipe version"),
+        datetime.now(UTC),
+        servings=body.servings if body else None,
     )
 
 

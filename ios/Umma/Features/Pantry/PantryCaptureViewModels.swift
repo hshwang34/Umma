@@ -249,23 +249,37 @@ final class ScanCaptureViewModel {
     /// The last "Find items" failed in a retryable way (503/502); the photo is kept for Retry.
     private(set) var canRetry = false
     var observation: PantryObservation?
+    /// Receipt mode only: the server's answer. The pantry has already changed when this is set.
+    var receipt: ReceiptResult?
+    /// Receipt mode: called with the server's answer as soon as it arrives, whether or not the
+    /// capture sheet is still on screen. The pantry has already changed by then, so the Pantry
+    /// screen must always hear about it (banner, Undo, list).
+    var onReceipt: (@MainActor (ReceiptResult) -> Void)?
+    /// A photo is on its way to the server: the sheet must not be closed until it answers.
+    var blocksDismissal: Bool { isSubmitting }
 
     let camera: any CameraSource
     private let service: PantryService
+    /// Set → this is the receipt screen (brief 017): the same camera, picker and upload path, but
+    /// the photo goes to the receipt reader and there is no review step.
+    private let receipts: ReceiptService?
     private let encode: @Sendable (Data) async throws -> PantryPhotoUpload
     /// Mock-mode fixture stem (debug launch argument only); nil in normal use.
     private let fixture: String?
 
     init(camera: any CameraSource,
          service: PantryService,
+         receipts: ReceiptService? = nil,
          fixture: String? = nil,
          encode: @escaping @Sendable (Data) async throws -> PantryPhotoUpload = { try await PantryImageEncoder.encodeDetached($0) }) {
         self.camera = camera
         self.service = service
+        self.receipts = receipts
         self.fixture = fixture
         self.encode = encode
     }
 
+    var copy: ScanCaptureCopy { receipts == nil ? .shelf : .receipt }
     var canUseCamera: Bool { camera.isAvailable }
     /// Drives the visible "Camera on" indicator; read from the source, never assumed.
     var cameraOn: Bool { camera.activeIndicator }
@@ -343,6 +357,13 @@ final class ScanCaptureViewModel {
         do {
             var upload = try await encode(data)
             upload.fixture = fixture
+            if let receipts {
+                let result = try await receipts.readReceipt(upload)
+                photoData = nil
+                receipt = result
+                onReceipt?(result)
+                return
+            }
             let result = try await service.observePhoto(upload)
             // The server has the candidates; the photo is no longer needed anywhere.
             photoData = nil
@@ -364,4 +385,24 @@ final class ScanCaptureViewModel {
         photoData = nil
         await camera.stopPreview()
     }
+}
+
+/// The words on the photo capture screen: a shelf scan (review first) or a receipt (brief 017).
+struct ScanCaptureCopy: Equatable {
+    let navigationTitle: String
+    let title: String
+    let explainer: String
+    let submitTitle: String
+
+    static let shelf = ScanCaptureCopy(
+        navigationTitle: "Scan",
+        title: "Scan a shelf or the fridge",
+        explainer: "The camera turns on only when you tap it and stops right after the photo. The photo is analysed once and not kept. You’ll review every item before anything is added.",
+        submitTitle: "Find items")
+
+    static let receipt = ScanCaptureCopy(
+        navigationTitle: "Receipt",
+        title: "Photograph your receipt",
+        explainer: "Get the whole receipt in one photo. Umma reads it once and doesn’t keep the photo. Food it’s sure about goes straight into your pantry, and you can undo the whole receipt afterwards.",
+        submitTitle: "Read receipt")
 }

@@ -292,6 +292,7 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         let start = app.buttons["fit.startCooking"]
         XCTAssertTrue(wait(for: start, enabled: true, timeout: 10))
         start.tap()
+        confirmStart(app)
         let counter = app.staticTexts["cooking.stepCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 15), "cooking screen did not open")
         XCTAssertTrue(waitForLabel(counter, prefix: "Step 1 of", timeout: 15), "did not start at step 1: \(counter.label)")
@@ -340,6 +341,7 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         scrollUntilHittable(start, in: app)
         XCTAssertTrue(wait(for: start, enabled: true, timeout: 10))
         start.tap()
+        confirmStart(app)
         let counter = app.staticTexts["cooking.stepCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 15), "cooking screen did not open")
         XCTAssertTrue(waitForLabel(counter, prefix: "Step 1 of", timeout: 15))
@@ -690,6 +692,13 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         }
         for _ in 0..<(screens - 1) { app.swipeDown() }
         return labels
+    }
+
+    /// Brief 020: Start cooking asks "Cooking for N" first; the confirm button says the number.
+    private func confirmStart(_ app: XCUIApplication) {
+        let confirm = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Start cooking for")).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no Cooking for N confirmation")
+        confirm.tap()
     }
 
     private func wait(for element: XCUIElement, enabled: Bool, timeout: TimeInterval) -> Bool {

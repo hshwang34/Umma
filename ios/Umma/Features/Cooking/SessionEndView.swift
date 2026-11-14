@@ -4,15 +4,69 @@ import SwiftUI
 struct SessionEndView: View {
     @State private var model: SessionEndViewModel
     let onCancel: () -> Void
+    /// Closes the cooking screen after the shopping summary has been read.
+    let onClose: () -> Void
 
-    init(cooking: CookingViewModel, onCancel: @escaping () -> Void) {
+    init(cooking: CookingViewModel, onCancel: @escaping () -> Void, onClose: @escaping () -> Void = {}) {
         _model = State(initialValue: SessionEndViewModel(cooking: cooking))
         self.onCancel = onCancel
+        self.onClose = onClose
     }
 
     var body: some View {
-        @Bindable var model = model
+        if let summary = model.shoppingSummary {
+            finished(summary)
+        } else {
+            form
+        }
+    }
+
+    /// Brief 017: the cook is saved; this says what was added to the shopping list.
+    private func finished(_ summary: ShoppingAddedSummary) -> some View {
         NavigationStack {
+            List {
+                Section {
+                    VStack(spacing: Spacing.md) {
+                        DrawnCheck()
+                        Text("All done")
+                            .font(SLFont.title2)
+                            .foregroundStyle(SLColor.textPrimary)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Spacing.md)
+                    .listRowBackground(Color.clear)
+                }
+                Section {
+                    ForEach(summary.names, id: \.self) { name in
+                        Label(name, systemImage: "cart")
+                            .font(SLFont.body)
+                            .foregroundStyle(SLColor.textPrimary)
+                    }
+                } header: {
+                    Text(summary.title)
+                        .accessibilityIdentifier("end.shoppingAdded")
+                } footer: {
+                    Text("You started without these and didn’t swap them. Your list is under Pantry.")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(SLColor.background)
+            .navigationTitle("Finished")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Close", action: onClose)
+                        .bold()
+                        .accessibilityIdentifier("end.close")
+                }
+            }
+        }
+    }
+
+    private var form: some View {
+        @Bindable var model = model
+        return NavigationStack {
             Form {
                 Section {
                     VStack(spacing: Spacing.md) {

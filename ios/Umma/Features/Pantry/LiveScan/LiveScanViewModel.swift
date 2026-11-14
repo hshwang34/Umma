@@ -83,13 +83,16 @@ final class LiveScanViewModel {
         case interrupted
         /// Couldn't start (camera, server, connection). "Keep scanning" retries.
         case failed
+        /// The app went to the background: camera off, session closed, timer stopped. The basket
+        /// is kept. Nothing resumes on its own; "Keep scanning" is the cook's tap.
+        case paused
         case finishing
         case finished
         case cancelled
     }
 
     static let scanSeconds = 120
-    static let demoLabel = "Demo mode — not a real detection"
+    nonisolated static let demoLabel = "Demo mode — not a real detection"
     static let limitMessage = "Today’s live scan allowance is used up. Tap Done to keep what you scanned, or add more by photo or voice."
     static let connectFailedMessage = "Couldn’t connect the live scan. Try again, or add items by photo or voice."
     static let scanClosedMessage = "This scan can’t take more items. Tap Done to keep what you scanned."
@@ -107,6 +110,8 @@ final class LiveScanViewModel {
     /// The token (or the server) said demo: scripted items, nothing auto-saved.
     private(set) var isDemo = false
     private(set) var message: String?
+    /// The last start failed because camera access is denied; the screen offers "Open Settings".
+    private(set) var permissionDenied = false
     private(set) var result: LiveScanResultPresentation?
     private(set) var scanID: UUID?
 
@@ -153,8 +158,15 @@ final class LiveScanViewModel {
 
     /// Drives the visible "Scanning" indicator; read from the source, never assumed.
     var cameraOn: Bool { camera.activeIndicator }
-    var canContinue: Bool { phase == .timeUp || phase == .interrupted || phase == .failed }
-    var canFinish: Bool { scanID != nil && [.starting, .scanning, .timeUp, .limitReached, .interrupted, .failed].contains(phase) }
+    var canContinue: Bool { phase == .timeUp || phase == .interrupted || phase == .failed || phase == .paused }
+    var canFinish: Bool { scanID != nil && [.starting, .scanning, .timeUp, .limitReached, .interrupted, .failed, .paused].contains(phase) }
+    /// The save is on its way to the server: the sheet must not be closed until it answers.
+    var blocksDismissal: Bool { phase == .finishing }
+    /// Called once when Done has saved, whether or not the sheet is still on screen: the
+    /// auto-added items are in the pantry by then, so the Pantry screen must hear about it.
+    var onFinished: (@MainActor (LiveScanResultPresentation) -> Void)?
+
+    static let pausedMessage = "The camera turned off when you left Umma. Your basket is kept. Keep scanning, or tap Done to check your list."
 
     // MARK: - Start, stop
 
@@ -173,6 +185,7 @@ final class LiveScanViewModel {
         let run = gate.begin()
         phase = .starting
         message = nil
+        permissionDenied = false
         didAutoReconnect = false
         do {
             try await camera.startPreview()
@@ -201,8 +214,16 @@ final class LiveScanViewModel {
             guard gate.isCurrent(run) else { return }
             // A transport error has no user copy of its own.
             let text = error is LiveScanError ? Self.connectFailedMessage : error.pantryMessage
+            if case CaptureError.permissionDenied = error { permissionDenied = true }
             await stop(Self.isLimit(error) ? .limitReached : .failed, text)
         }
+    }
+
+    /// The app went to the background while the camera was looking (or coming up). Capture is
+    /// user-initiated and visible, so it stops here and stays stopped when the app returns.
+    func pauseForBackground() async {
+        guard phase == .starting || phase == .scanning else { return }
+        await stop(.paused, Self.pausedMessage)
     }
 
     /// Stops the camera and frames, closes the session, then saves: high-confidence new items go
@@ -215,8 +236,10 @@ final class LiveScanViewModel {
         do {
             let finished = try await service.finishLiveScan(scanID: scanID)
             guard phase == .finishing else { return }
-            result = LiveScanResultPresentation(finished)
+            let presentation = LiveScanResultPresentation(finished)
+            result = presentation
             phase = .finished
+            onFinished?(presentation)
         } catch {
             guard phase == .finishing else { return }
             phase = .interrupted
