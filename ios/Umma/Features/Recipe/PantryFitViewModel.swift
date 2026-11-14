@@ -252,6 +252,7 @@ final class PantryFitViewModel {
             guard generation == loadGeneration else { return }
             pantryItems = pantry
             phase = .loaded(fit)
+            clearStaleRemoval(in: fit)
         } catch let error as APIError where error == .cancelled {
             _ = await pantryResult
         } catch {
@@ -352,6 +353,24 @@ final class PantryFitViewModel {
     /// The key ingredient the cook just said they don't have, so the card can say what happened.
     private var removedKeyRef: String?
 
+    /// True between "I don’t have that" and the reload it causes.
+    private var removalAwaitsReload = false
+
+    /// "Removed X from your pantry" describes the tap just made. It is shown through the reload
+    /// that tap causes, then dropped: on any later reload, or as soon as the fit says the pantry
+    /// holds the ingredient again or names a different key ingredient.
+    private func clearStaleRemoval(in fit: PantryFit) {
+        guard let removed = removedKeyRef else { return }
+        let key = fit.items.first { $0.isKey == true }
+        if removalAwaitsReload, key?.ingredientRef == removed, key?.pantryItemId == nil {
+            removalAwaitsReload = false
+            return
+        }
+        removalAwaitsReload = false
+        removedKeyRef = nil
+        keyOnShoppingList = false
+    }
+
     /// "I don’t have that" on the key-ingredient card: the pantry item is deleted on this tap
     /// and on nothing else. The fit is re-read through the revision bump.
     func removeKeyIngredient() async {
@@ -368,6 +387,7 @@ final class PantryFitViewModel {
             return
         }
         removedKeyRef = card.ingredientRef
+        removalAwaitsReload = true
         if let shopping {
             do {
                 _ = try await shopping.addShoppingItem(name: card.name, reason: .ranOut, recipeVersionId: recipeVersionId)
