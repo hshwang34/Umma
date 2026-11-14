@@ -59,8 +59,11 @@ struct CookingView: View {
             created.onSessionGone = { [environment] id in environment.cooking.sessionGone(id, epoch: epoch) }
             environment.cooking.attach(created)
             let drawer = AssistantViewModel(sessionId: presentation.sessionId, service: environment.api,
-                                            audio: environment.audio, currentSession: { [weak created] in created?.session })
+                                            audio: environment.audio, shopping: environment.api, pantry: environment.api,
+                                            currentSession: { [weak created] in created?.session })
             drawer.onProposal = { [weak created] action in await created?.perform(action) ?? false }
+            drawer.onApproveSwap = { [weak created] adaptation in await created?.approveAdaptation(adaptation) ?? false }
+            drawer.onPantryChanged = { [environment] in environment.notePantryChanged() }
             model = created
             assistant = drawer
             await created.load()
