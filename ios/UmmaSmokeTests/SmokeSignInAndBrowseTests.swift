@@ -155,7 +155,7 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         // Explicit confirmation
         let confirm = app.buttons["publish.confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no publish confirmation")
-        XCTAssertTrue(app.staticTexts["Publish version 1?"].exists)
+        XCTAssertTrue(app.staticTexts["Publish this recipe?"].exists)
         attach(app, "6-confirm")
         confirm.tap()
 
