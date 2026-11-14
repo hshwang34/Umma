@@ -109,6 +109,8 @@ struct DevLoginVerifyRequest: Encodable, Sendable {
 struct AppleSignInRequest: Encodable, Sendable {
     let identityToken: String
     let nonce: String
+    /// Optional: lets the server revoke the Apple grant on account deletion. Omitted when nil.
+    let authorizationCode: String?
     /// Apple only gives the name on a person's first sign-in; omitted when nil.
     let displayName: String?
 }

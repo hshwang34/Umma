@@ -25,7 +25,7 @@ extension AppEnvironment {
             makeVoice = { VoiceSession(transport: scripted, config: $0) }
         }
         #endif
-        let coordinator = CaptureCoordinator(api: api, makeVoice: makeVoice, userId: auth.user?.id)
+        let coordinator = CaptureCoordinator(api: api, makeVoice: makeVoice, journal: captureJournal, userId: auth.user?.id)
         return CaptureFlow(coordinator: coordinator,
                            generator: CaptureDraftGenerator(api: api, coordinator: coordinator),
                            resumeRecord: record)
@@ -33,7 +33,7 @@ extension AppEnvironment {
 
     /// Unfinished recordings on this phone for the signed-in user, newest first.
     func pendingCaptures() -> [CaptureJournalRecord] {
-        CaptureJournalStore.live.pending(userId: auth.user?.id)
+        captureJournal.pending(userId: auth.user?.id)
     }
 }
 

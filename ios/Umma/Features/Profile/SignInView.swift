@@ -246,6 +246,12 @@ struct SignInView: View {
 
     @ViewBuilder
     private var inlineError: some View {
+        if errorMessage == nil, environment.auth.banner == nil, let notice = environment.auth.notice {
+            Label(notice, systemImage: "checkmark.circle")
+                .font(SLFont.footnote)
+                .foregroundStyle(SLColor.textSecondary)
+                .accessibilityIdentifier("signin.notice")
+        }
         if let message = errorMessage ?? environment.auth.banner {
             Label(message, systemImage: "exclamationmark.circle.fill")
                 .font(SLFont.footnote)
@@ -329,7 +335,7 @@ struct SignInView: View {
         case .success(let authorization):
             guard let nonce,
                   let apple = authorization.credential as? ASAuthorizationAppleIDCredential,
-                  let credential = try? AppleSignIn.credential(identityToken: apple.identityToken, fullName: apple.fullName)
+                  let credential = try? AppleSignIn.credential(identityToken: apple.identityToken, authorizationCode: apple.authorizationCode, fullName: apple.fullName)
             else {
                 errorMessage = Self.appleFailureMessage
                 return

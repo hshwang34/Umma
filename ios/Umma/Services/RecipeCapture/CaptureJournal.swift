@@ -110,6 +110,19 @@ struct CaptureJournalStore: Sendable {
     func remove(_ sessionId: UUID) {
         try? FileManager.default.removeItem(at: url(sessionId))
     }
+
+    /// Forget every recording on this phone (brief 010: sign-out, account deletion, server
+    /// change), or only one account's when `userId` is given. Files that can't be read go too.
+    func removeAll(userId: UUID? = nil) {
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for file in files {
+            if let userId {
+                let record = try? JSONCoding.makeDecoder().decode(CaptureJournalRecord.self, from: Data(contentsOf: file))
+                guard record?.userId == userId else { continue }
+            }
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
 }
 
 /// Spoken "skip" / "later" / "stop asking", mirroring the server's `policy.parse_command` so

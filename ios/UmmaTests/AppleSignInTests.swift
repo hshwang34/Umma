@@ -43,8 +43,10 @@ final class AppleSignInTests: XCTestCase {
         var name = PersonNameComponents()
         name.givenName = "Mina"
         name.familyName = "Cho"
-        let credential = try AppleSignIn.credential(identityToken: Data("header.payload.sig".utf8), fullName: name)
+        let credential = try AppleSignIn.credential(identityToken: Data("header.payload.sig".utf8),
+                                                    authorizationCode: Data("c0de.0.abc".utf8), fullName: name)
         XCTAssertEqual(credential.identityToken, "header.payload.sig")
+        XCTAssertEqual(credential.authorizationCode, "c0de.0.abc")
         XCTAssertEqual(credential.displayName, "Mina Cho")
     }
 
@@ -53,6 +55,19 @@ final class AppleSignInTests: XCTestCase {
         XCTAssertNil(AppleSignIn.displayName(from: PersonNameComponents()))
         let credential = try AppleSignIn.credential(identityToken: Data("t".utf8), fullName: nil)
         XCTAssertNil(credential.displayName)
+        XCTAssertNil(credential.authorizationCode)
+        XCTAssertNil(try AppleSignIn.credential(identityToken: Data("t".utf8), authorizationCode: Data(), fullName: nil).authorizationCode)
+    }
+
+    func testAuthorizationCodeIsSentWhenAppleGivesOne() async throws {
+        AuthFixtures.installHappyPath()
+        let (auth, _, _) = makeAuth()
+        await auth.restore()
+        try await auth.signInWithApple(
+            .init(identityToken: "apple.identity.token", authorizationCode: "c0de.0.abc", displayName: nil), nonce: SignInNonce(raw: "raw-nonce-0123456789abcdef"))
+        let json = try XCTUnwrap(StubURLProtocol.requests.first { $0.url?.path == "/v1/auth/apple" }).jsonBody()
+        XCTAssertEqual(json["authorization_code"] as? String, "c0de.0.abc")
+        XCTAssertEqual(Set(json.keys), ["identity_token", "nonce", "authorization_code"])
     }
 
     func testMissingOrUnreadableTokenIsRefused() {
@@ -92,6 +107,7 @@ final class AppleSignInTests: XCTestCase {
         try await auth.signInWithApple(.init(identityToken: "apple.identity.token", displayName: nil), nonce: SignInNonce())
         let request = try XCTUnwrap(StubURLProtocol.requests.first { $0.url?.path == "/v1/auth/apple" })
         XCTAssertNil(try request.jsonBody()["display_name"], "the server refuses unknown or null extras")
+        XCTAssertNil(try request.jsonBody()["authorization_code"], "optional: left out, never null")
     }
 
     func testRefusedTokenStaysSignedOutWithoutTheGlobalSignOutPath() async throws {

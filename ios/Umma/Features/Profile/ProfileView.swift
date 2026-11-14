@@ -16,6 +16,9 @@ struct ProfileView: View {
     @State private var typeInAfterCapture = false
     @State private var pendingCaptures: [CaptureJournalRecord] = []
     @State private var showServerSettings = false
+    // Brief 010: delete account.
+    @State private var deletion: AccountDeletionModel?
+    @State private var confirmDeleteAccount = false
     // Brief 020: Default servings.
     @State private var servings: DefaultServingsViewModel?
 
@@ -42,6 +45,7 @@ struct ProfileView: View {
                             .frame(maxWidth: .infinity, minHeight: Metrics.minTapTarget)
                     }
                 }
+                deleteAccountSection
             }
             .scrollContentBackground(.hidden)
             .background(SLColor.background)
@@ -76,6 +80,17 @@ struct ProfileView: View {
                 Text("Only the draft is deleted. Anything already published stays published.")
             }
         }
+        .confirmationDialog(AccountDeletionModel.confirmationTitle, isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
+            Button(AccountDeletionModel.confirmButton, role: .destructive) {
+                let model = deletion ?? AccountDeletionModel(auth: environment.auth)
+                deletion = model
+                Task { await model.deleteConfirmed() }
+            }
+            .accessibilityIdentifier("profile.deleteAccount.confirm")
+            Button(AccountDeletionModel.cancelButton, role: .cancel) {}
+        } message: {
+            Text(AccountDeletionModel.confirmationMessage)
+        }
         .task {
             if servings == nil {
                 servings = DefaultServingsViewModel(current: environment.auth.user?.defaultServings, service: environment.api) { [environment] user in
@@ -106,7 +121,7 @@ struct ProfileView: View {
         .onAppear { pendingCaptures = environment.pendingCaptures() }
         .task {
             // Brief 014: a discard that couldn't reach the server is retried here.
-            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+            await CaptureCoordinator.retryPendingDiscards(api: environment.api, journal: environment.captureJournal, userId: environment.auth.user?.id)
             pendingCaptures = environment.pendingCaptures()
         }
         .task(id: environment.requestNewRecipe) {
@@ -161,7 +176,7 @@ struct ProfileView: View {
                 CaptureResumeRow(record: record) {
                     if record.discardPending == true {
                         Task {
-                            await CaptureCoordinator.retryPendingDiscards(api: environment.api, userId: environment.auth.user?.id)
+                            await CaptureCoordinator.retryPendingDiscards(api: environment.api, journal: environment.captureJournal, userId: environment.auth.user?.id)
                             pendingCaptures = environment.pendingCaptures()
                         }
                     } else {
@@ -345,6 +360,31 @@ struct ProfileView: View {
             } header: {
                 Text("Account")
             }
+        }
+    }
+
+    private var deleteAccountSection: some View {
+        Section {
+            Button(role: .destructive) {
+                confirmDeleteAccount = true
+            } label: {
+                HStack {
+                    Text("Delete account")
+                    Spacer()
+                    if deletion?.isDeleting == true { ProgressView() }
+                }
+                .frame(minHeight: Metrics.minTapTarget)
+            }
+            .disabled(deletion?.isDeleting == true)
+            .accessibilityIdentifier("profile.deleteAccount")
+            if let message = deletion?.errorMessage {
+                Label(message, systemImage: "exclamationmark.circle.fill")
+                    .font(SLFont.footnote)
+                    .foregroundStyle(SLColor.danger)
+                    .accessibilityLabel("Error: \(message)")
+            }
+        } footer: {
+            Text(AccountDeletionModel.footer)
         }
     }
 
