@@ -101,6 +101,25 @@ struct SignInView: View {
             .disabled(isSubmitting)
             .accessibilityIdentifier("signin.apple")
 
+            if let google = environment.googleSignIn {
+                Button {
+                    signInWithGoogle(google)
+                } label: {
+                    Text("Sign in with Google")
+                        .font(.system(size: 19, weight: .medium))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .foregroundStyle(SLColor.textPrimary)
+                        .background(SLColor.surface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                                .strokeBorder(SLColor.separator, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmitting)
+                .accessibilityIdentifier("signin.google")
+            }
+
             #if !DEBUG
             inlineError
             #endif
@@ -320,6 +339,19 @@ struct SignInView: View {
     }
 
     private static let appleFailureMessage = "Couldn’t sign in with Apple. Try again."
+
+    private func signInWithGoogle(_ google: GoogleSignInFlow) {
+        guard !isSubmitting else { return }
+        run {
+            do {
+                let credential = try await google.run()
+                try await environment.auth.signInWithGoogle(credential)
+            } catch let failure as GoogleSignIn.Failure {
+                // Closing the sheet is not an error worth a message.
+                if let message = GoogleSignInPresentation.message(for: failure) { errorMessage = message }
+            }
+        }
+    }
 
     private func run(_ action: @escaping @MainActor () async throws -> Void) {
         errorMessage = nil
