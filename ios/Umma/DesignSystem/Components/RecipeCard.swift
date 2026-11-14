@@ -94,6 +94,8 @@ struct RecipeCoverArt: View {
             MiseArt.gradient(for: seed)
             Image(systemName: "fork.knife")
                 .font(SLFont.glyph)
+                // The banner is only ~140pt tall; past xxxLarge the glyph would crowd its edges.
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .foregroundStyle(.white.opacity(0.75))
             if let url {
                 AsyncImage(url: url) { phase in
