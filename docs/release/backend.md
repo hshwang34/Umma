@@ -79,6 +79,7 @@ the repo, a PR or a log.
 |---|---|---|
 | `GEMINI_API_KEY` | Coach, pantry photos, receipts, video extraction, live scan. Paid-tier key from the personal Cloud project (DECISIONS #19). Also needs `AI_PROVIDER=gemini`. | With `AI_PROVIDER=mock` every AI answer is the labelled demo path. |
 | `GOOGLE_IOS_CLIENT_ID` | iOS OAuth client id for Sign in with Google (DECISIONS #33). Not secret, but set here so it is in one place. | `POST /v1/auth/google` does not exist. |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Sign in with Apple key, used to exchange the sign-in authorization code for a refresh token (stored encrypted) so the token can be revoked when the person deletes their account (App Review guideline 5.1.1(v)). Team ID `V56DG94ZL5`; the key ID and `.p8` come from the developer portal (Keys → Sign in with Apple). Set the key with `APPLE_PRIVATE_KEY="$(cat AuthKey_XXXXXXXXXX.p8)"` and keep the `.p8` out of the repo. | Sign-in and account deletion still work; the Apple revoke is skipped and logged. **Set these before the external beta.** |
 | `PEXELS_API_KEY` | Stock cover photo after a first publish (brief 019). | Recipes without a cover stay without one. |
 | `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | Paid server voice (brief 012). Also needs `PAID_VOICE_ENABLED=true`, which needs the PM's go (DECISIONS #26). | Voice stays on the phone. |
 
