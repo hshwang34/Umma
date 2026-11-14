@@ -49,6 +49,7 @@ Capability = Literal[
     "capture",
     "capture_draft",
     "pantry_live",
+    "pantry_receipt",  # brief 017: one receipt photo; counts against the $0.25 day cap
 ]
 # Draft-making calls (one per video / capture session) are limited by the per-user monthly
 # extraction count instead of the $0.25 per-user day budget (brief 008, brief 014). They still

@@ -32,7 +32,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Protocol, TypeVar
 
@@ -50,11 +50,13 @@ from app.ai.prompts import (
     COACH_SYSTEM,
     INSPECT_SYSTEM,
     PANTRY_SYSTEM,
+    RECEIPT_SYSTEM,
     SUBSTITUTION_SYSTEM,
     VIDEO_SYSTEM,
     data_block,
 )
 from app.ai.providers.base import (
+    MAX_RECEIPT_LINES,
     CaptureInterviewRequest,
     CoachRequest,
     CoachResponse,
@@ -68,6 +70,9 @@ from app.ai.providers.base import (
     PantryObservation,
     PantryObservationRequest,
     ProposedAction,
+    ReceiptDraft,
+    ReceiptLine,
+    ReceiptRequest,
     StrictModel,
     SubstitutionKind,
     SubstitutionRequest,
@@ -102,6 +107,9 @@ MAX_OUTPUT_TOKENS: dict[str, int] = {
     "video": 16384,
     "capture": 1024,
     "capture_draft": 16384,
+    # Brief 017: up to 80 lines at ~70 output tokens each (a long supermarket receipt), with
+    # headroom. A longer answer is cut off, which is a malformed read, never a partial save.
+    "pantry_receipt": 8192,
 }
 # Video input estimate (brief 008): Gemini bills ~70 tokens per frame at 1 fps with
 # MEDIA_RESOLUTION_LOW plus 32 tokens/s of audio; 100 tok/s of video is a deliberate over-estimate,
@@ -158,6 +166,23 @@ class PantryDraft(StrictModel):
     candidates: list[PantryCandidateDraft] = Field(default_factory=list, max_length=40)
     notes: list[str] = Field(default_factory=list, max_length=8)
     unknowns: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ReceiptLineDraft(StrictModel):
+    raw_text: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=80)
+    is_food: bool
+    count: int | None = Field(default=None, ge=1)
+    quantity: float | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, max_length=16)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ReceiptReadDraft(StrictModel):
+    purchased_on: date | None = None
+    store: str | None = Field(default=None, max_length=120)
+    total: float | None = None
+    lines: list[ReceiptLineDraft] = Field(default_factory=list, max_length=MAX_RECEIPT_LINES)
 
 
 class SubstitutionSuggestionDraft(StrictModel):
@@ -377,6 +402,7 @@ class GeminiProvider:
             "inspect": settings.gemini_model_inspect,
             "pantry_photo": settings.gemini_model_pantry,
             "pantry_transcript": settings.gemini_model_pantry,
+            "pantry_receipt": settings.gemini_model_pantry,
             "substitution": settings.gemini_model_substitution,
             "video": settings.gemini_model_video,
             "capture": settings.gemini_model_capture,
@@ -469,6 +495,13 @@ class GeminiProvider:
         ]
         return self._plan("pantry_transcript", PANTRY_SYSTEM, contents, PantryDraft)
 
+    def plan_read_receipt(self, request: ReceiptRequest) -> CallPlan:
+        contents: list[Any] = [
+            "Read the purchased lines on the attached grocery receipt photo.",
+            types.Part.from_bytes(data=request.image_bytes, mime_type=request.image_mime_type),
+        ]
+        return self._plan("pantry_receipt", RECEIPT_SYSTEM, contents, ReceiptReadDraft)
+
     def plan_suggest(self, request: SubstitutionRequest) -> CallPlan:
         contents = [
             "Suggest substitutions for the missing ingredient.",
@@ -534,6 +567,8 @@ class GeminiProvider:
                 return self.plan_inspect(request)
             case "pantry_photo" | "pantry_transcript":
                 return self.plan_observe(request)
+            case "pantry_receipt":
+                return self.plan_read_receipt(request)
             case "substitution":
                 return self.plan_suggest(request)
         raise ValueError(capability)  # pragma: no cover
@@ -756,6 +791,14 @@ class GeminiProvider:
         draft = await self.run(plan, PantryDraft, meter, salvage=_salvage_pantry)
         return to_pantry_observation(request.mode, draft)
 
+    async def read_receipt(
+        self, request: ReceiptRequest, meter: UsageMeter | None = None
+    ) -> ReceiptDraft:
+        """No salvage, unlike ``observe``: receipt lines can be saved without review (brief 017),
+        so a half-read receipt is an error to retry, never a partial result."""
+        draft = await self.run(self.plan_read_receipt(request), ReceiptReadDraft, meter)
+        return to_receipt_draft(draft)
+
     async def suggest(
         self, request: SubstitutionRequest, meter: UsageMeter | None = None
     ) -> SubstitutionResponse:
@@ -825,6 +868,22 @@ def to_pantry_observation(
         ],
         notes=draft.notes,
         unknowns=draft.unknowns,
+    )
+
+
+def _decimal(value: float | None) -> Decimal | None:
+    return None if value is None else Decimal(str(value))
+
+
+def to_receipt_draft(draft: ReceiptReadDraft) -> ReceiptDraft:
+    return ReceiptDraft(
+        purchased_on=draft.purchased_on,
+        store=draft.store,
+        total=_decimal(draft.total),
+        lines=[
+            ReceiptLine(**{**line.model_dump(), "quantity": _decimal(line.quantity)})
+            for line in draft.lines
+        ],
     )
 
 
