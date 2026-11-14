@@ -22,6 +22,10 @@ settings:
     # with SwiftUI's own `.background` / `.accent` style names.
     ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
     SWIFT_EMIT_LOC_STRINGS: YES
+    # Version and build number (brief 010). Override on the command line, e.g.
+    # `xcodebuild ... MARKETING_VERSION=0.2.0 CURRENT_PROJECT_VERSION=7`; `make release-ios` does.
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
   configs:
     Debug:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
@@ -57,8 +61,8 @@ targets:
       path: Umma/Resources/Info.plist
       properties:
         CFBundleDisplayName: Umma
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Launch: the persimmon mark on Flesh (brief 013). Names are asset-catalog entries.
         UILaunchScreen:
           UIColorName: Background
@@ -68,6 +72,7 @@ targets:
           - BagelFatOne-Regular.ttf
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # HTTPS/TLS and CryptoKit hashing only, so no export-compliance question per upload.
         ITSAppUsesNonExemptEncryption: false
         # umma://recipe/{id} share links (brief 003 REC-01).
         CFBundleURLTypes:

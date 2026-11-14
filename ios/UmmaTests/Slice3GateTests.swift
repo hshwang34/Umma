@@ -19,8 +19,8 @@ final class SlowReadService: CookingService, @unchecked Sendable {
     func suggestSubstitutions(recipeVersionId: UUID, ingredientRef: String) async throws -> SubstitutionResult {
         try await inner.suggestSubstitutions(recipeVersionId: recipeVersionId, ingredientRef: ingredientRef)
     }
-    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput]) async throws -> CookingSession {
-        try await inner.createSession(recipeVersionId: recipeVersionId, adaptations: adaptations)
+    func createSession(recipeVersionId: UUID, adaptations: [AdaptationInput], servings: Int?) async throws -> CookingSession {
+        try await inner.createSession(recipeVersionId: recipeVersionId, adaptations: adaptations, servings: servings)
     }
     func activeSessions() async throws -> [SessionSummary] { try await inner.activeSessions() }
     func session(id: UUID) async throws -> CookingSession {

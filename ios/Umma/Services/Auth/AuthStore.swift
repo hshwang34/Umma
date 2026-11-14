@@ -121,6 +121,13 @@ final class AuthStore {
         try startSession(response)
     }
 
+    /// Sign in with Google (brief 010). Same contract as `signInWithApple`: a refused token
+    /// throws `APIError.unauthorized` and leaves the store signed out.
+    func signInWithGoogle(_ credential: GoogleSignInFlow.Credential) async throws {
+        let response = try await api.signInWithGoogle(idToken: credential.idToken, nonce: credential.nonce.raw)
+        try startSession(response)
+    }
+
     private func startSession(_ response: AuthResponse) throws {
         if cachedUser()?.id != response.user.id {
             // A different account: nothing of the previous one's may survive.

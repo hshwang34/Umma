@@ -123,6 +123,11 @@ private struct TurnView: View {
                         Text(segment.text).font(SLFont.title3.weight(.regular))
                     }
                 }
+                if let offer = model.offer(for: turn) {
+                    MissingIngredientCard(offer: offer, cookingBusy: cookingBusy,
+                                          onAction: { action in Task { await model.perform(action, turnId: turn.id) } },
+                                          onPick: { candidate in Task { await model.pick(candidate, turnId: turn.id) } })
+                }
                 FlowBadges(badges: model.badges(for: turn), uncertainty: turn.response.uncertainty.uncertaintyText)
                 HStack(spacing: Spacing.sm) {
                     Button {

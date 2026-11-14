@@ -152,7 +152,12 @@ final class FakePantryService: PantryService, @unchecked Sendable {
     func observePhoto(_ photo: PantryPhotoUpload) async throws -> PantryObservation {
         record(.photo(photo)); return try photoHandler(photo)
     }
-    func fit(recipeVersionId: UUID) async throws -> PantryFit {
+    /// The `servings` of each fit call, in order (nil = the recipe's own).
+    var fitServings: [Int?] { lock.withLock { _fitServings } }
+    private var _fitServings: [Int?] = []
+
+    func fit(recipeVersionId: UUID, servings: Int?) async throws -> PantryFit {
+        lock.withLock { _fitServings.append(servings) }
         record(.fit(recipeVersionId)); await suspend?(.fit(recipeVersionId)); return try fitHandler(recipeVersionId)
     }
 

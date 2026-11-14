@@ -5,10 +5,14 @@ struct PantryFitView: View {
     @Environment(AppEnvironment.self) private var environment
     let recipeVersionId: UUID
     let recipeTitle: String
+    /// Brief 020: the servings on the recipe page's dial. Nil means the recipe's own.
+    var servings: ServingsChoice? = nil
 
     @State private var model: PantryFitViewModel?
     @State private var editor: PantryItemEditorModel?
     @State private var swapSheet: SwapTarget?
+    /// Brief 020: "Cooking for N" is confirmed before the cook is created.
+    @State private var confirmingStart: StartConfirmation?
 
     /// The ingredient line a "Find a swap" sheet is open for.
     private struct SwapTarget: Identifiable {
@@ -72,8 +76,8 @@ struct PantryFitView: View {
     }
 
     private func makeModel() -> PantryFitViewModel {
-        let model = PantryFitViewModel(recipeVersionId: recipeVersionId, recipeTitle: recipeTitle,
-                                       service: environment.api, cooking: environment.api)
+        let model = PantryFitViewModel(recipeVersionId: recipeVersionId, recipeTitle: recipeTitle, servings: servings,
+                                       service: environment.api, cooking: environment.api, shopping: environment.api)
         model.onPantryChanged = { [environment] in environment.notePantryChanged() }
         return model
     }
@@ -101,6 +105,22 @@ struct PantryFitView: View {
             Section {
                 header(model)
                     .listRowBackground(Color.clear)
+            }
+            if let card = model.keyIngredient {
+                Section {
+                    KeyIngredientCardView(
+                        card: card,
+                        isBusy: card.pantryItemId.map(model.busyItemIds.contains) ?? false,
+                        onStillHave: {
+                            if let id = card.pantryItemId { Task { await model.confirmStillHave(pantryItemId: id) } }
+                        },
+                        onDontHave: { Task { await model.removeKeyIngredient() } },
+                        onFindSwap: { swapSheet = SwapTarget(ingredientRef: card.ingredientRef, name: card.name) },
+                        onAdd: {
+                            editor = PantryItemEditorModel(mode: .add, form: PantryItemForm(name: card.name), service: environment.api)
+                        }
+                    )
+                }
             }
             if let error = model.actionError {
                 Section {
@@ -190,11 +210,10 @@ struct PantryFitView: View {
                 Text(error).font(SLFont.footnote).foregroundStyle(SLColor.danger)
             }
             Button {
-                Task {
-                    let epoch = environment.cooking.epoch
-                    if let session = await model.startCooking(epoch: epoch) {
-                        environment.cooking.present(newSession: session, epoch: epoch, cautions: model.swapCautions)
-                    }
+                if let confirmation = model.startConfirmation {
+                    confirmingStart = confirmation
+                } else {
+                    start(model)
                 }
             } label: {
                 if model.isStarting {
@@ -207,12 +226,22 @@ struct PantryFitView: View {
             .disabled(model.isStarting || model.fit == nil)
             .accessibilityIdentifier("fit.startCooking")
             .accessibilityHint(model.approvedSwapList.isEmpty ? "Starts the recipe as written" : "Starts the recipe with your swaps")
+            .startConfirmation($confirmingStart) { _ in start(model) }
         }
         .padding(.horizontal, Spacing.screen)
         .padding(.vertical, Spacing.sm)
         // Solid, not material: swap cautions live in this bar, and rows passing behind it must
         // not be tappable through it (the List's inset lets every row scroll fully above it).
         .bottomBarScrim()
+    }
+
+    private func start(_ model: PantryFitViewModel) {
+        Task {
+            let epoch = environment.cooking.epoch
+            if let session = await model.startCooking(epoch: epoch) {
+                environment.cooking.present(newSession: session, epoch: epoch, cautions: model.swapCautions)
+            }
+        }
     }
 
     private func header(_ model: PantryFitViewModel) -> some View {
@@ -229,6 +258,10 @@ struct PantryFitView: View {
             }
             if let sub = model.subheadline {
                 Text(sub).font(SLFont.title3).foregroundStyle(SLColor.textPrimary)
+            }
+            if let servings = model.servingsText {
+                MetadataPill(text: servings, systemImage: "person.2", style: .accent)
+                    .accessibilityIdentifier("fit.servings")
             }
             if let coverage = model.coverageText, let fit = model.fit {
                 // The count ticks up once; VoiceOver hears only the final, full sentence.
@@ -251,6 +284,71 @@ struct PantryFitView: View {
         case .missing: return SLColor.danger
         case .optional: return SLColor.textSecondary
         }
+    }
+}
+
+/// Brief 017: the main ingredient and its two answers. Each button is one explicit tap.
+private struct KeyIngredientCardView: View {
+    let card: KeyIngredientCard
+    let isBusy: Bool
+    let onStillHave: () -> Void
+    let onDontHave: () -> Void
+    let onFindSwap: () -> Void
+    let onAdd: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(card.title)
+                    .font(SLFont.title3)
+                    .foregroundStyle(SLColor.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text(card.detail)
+                    .font(SLFont.callout)
+                    .foregroundStyle(SLColor.textSecondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("fit.key.title")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.sm) { buttons }
+                VStack(alignment: .leading, spacing: Spacing.sm) { buttons }
+            }
+        }
+        .padding(.vertical, Spacing.xs)
+        .opacity(isBusy ? 0.5 : 1)
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        Group {
+            switch card.state {
+            case .ask:
+                Button(KeyIngredientCard.stillHaveTitle, action: onStillHave)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("fit.key.stillHave")
+                Button(KeyIngredientCard.dontHaveTitle, action: onDontHave)
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Removes \(card.name) from your pantry and puts it on your shopping list")
+                    .accessibilityIdentifier("fit.key.dontHave")
+            case .seenToday:
+                Button(KeyIngredientCard.dontHaveTitle, action: onDontHave)
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Removes \(card.name) from your pantry and puts it on your shopping list")
+                    .accessibilityIdentifier("fit.key.dontHave")
+            case .notInPantry:
+                if card.canFindSwap {
+                    Button("Find a swap", action: onFindSwap)
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("fit.key.findSwap")
+                }
+                Button("Add to pantry", action: onAdd)
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("fit.key.add")
+            }
+        }
+        .tint(SLColor.accent)
+        .frame(minHeight: Metrics.minTapTarget)
+        .disabled(isBusy)
     }
 }
 
