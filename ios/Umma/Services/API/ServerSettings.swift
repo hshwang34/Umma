@@ -1,8 +1,9 @@
 import Foundation
 import Observation
 
-/// Where the backend lives. Persisted in `UserDefaults`; the simulator defaults to the Mac's
-/// localhost, a physical device starts empty so the tester is prompted for the Mac's LAN IP.
+/// Where the backend lives. A release build always uses `BuildConfig.productionAPIBaseURL`.
+/// A debug build persists an override in `UserDefaults`; the simulator defaults to the Mac's
+/// localhost, a physical device starts empty so the developer is prompted for the Mac's LAN IP.
 protocol BaseURLProviding: Sendable {
     var baseURL: URL? { get }
     var baseURLString: String { get }
@@ -12,14 +13,19 @@ protocol BaseURLProviding: Sendable {
 struct UserDefaultsBaseURLProvider: BaseURLProviding, @unchecked Sendable {
     static let key = "serverBaseURL"
     let defaults: UserDefaults
+    let allowsOverride: Bool
+    let fallback: String
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         allowsOverride: Bool = BuildConfig.allowsServerOverride,
+         fallback: String = ServerSettings.platformDefault) {
         self.defaults = defaults
+        self.allowsOverride = allowsOverride
+        self.fallback = fallback
     }
 
     var baseURLString: String {
-        let stored = defaults.string(forKey: Self.key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return stored.isEmpty ? ServerSettings.platformDefault : stored
+        ServerSettings.effective(defaults.string(forKey: Self.key) ?? "", allowsOverride: allowsOverride, fallback: fallback)
     }
 
     var baseURL: URL? {
@@ -37,12 +43,23 @@ struct StaticBaseURLProvider: BaseURLProviding {
 @Observable
 final class ServerSettings {
     #if targetEnvironment(simulator)
-    nonisolated static let platformDefault = "http://localhost:8000"
+    private nonisolated static let isSimulator = true
     #else
-    nonisolated static let platformDefault = ""
+    private nonisolated static let isSimulator = false
     #endif
 
+    /// The address used when nothing is typed in: production in a release build.
+    nonisolated static let platformDefault = defaultBaseURL(debug: BuildConfig.isDebug, simulator: isSimulator)
+
+    nonisolated static func defaultBaseURL(debug: Bool, simulator: Bool) -> String {
+        guard debug else { return BuildConfig.productionAPIBaseURL }
+        return simulator ? "http://localhost:8000" : ""
+    }
+
     private let defaults: UserDefaults
+    /// False in a release build: the address is fixed and nothing typed or stored changes it.
+    let allowsOverride: Bool
+    private let fallback: String
 
     /// Fired after the *effective* base URL changes (not on every keystroke — the settings screen
     /// edits a draft and commits on Save). `AppEnvironment` uses it to sign out and drop caches.
@@ -51,9 +68,9 @@ final class ServerSettings {
     /// Committed text. Empty means "use platform default".
     var baseURLText: String {
         didSet {
-            guard baseURLText != oldValue else { return }
+            guard allowsOverride, baseURLText != oldValue else { return }
             defaults.set(baseURLText, forKey: UserDefaultsBaseURLProvider.key)
-            let before = Self.effective(oldValue)
+            let before = Self.effective(oldValue, allowsOverride: allowsOverride, fallback: fallback)
             let after = effectiveBaseURLString
             if before != after {
                 onEffectiveBaseURLChanged?(before, after)
@@ -61,16 +78,26 @@ final class ServerSettings {
         }
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         allowsOverride: Bool = BuildConfig.allowsServerOverride,
+         fallback: String = ServerSettings.platformDefault) {
         self.defaults = defaults
-        self.baseURLText = defaults.string(forKey: UserDefaultsBaseURLProvider.key) ?? Self.platformDefault
+        self.allowsOverride = allowsOverride
+        self.fallback = fallback
+        self.baseURLText = allowsOverride ? defaults.string(forKey: UserDefaultsBaseURLProvider.key) ?? fallback : fallback
     }
 
-    var effectiveBaseURLString: String { Self.effective(baseURLText) }
+    var effectiveBaseURLString: String {
+        Self.effective(baseURLText, allowsOverride: allowsOverride, fallback: fallback)
+    }
 
-    nonisolated static func effective(_ text: String) -> String {
+    /// The address requests go to: the typed override when overrides are allowed and one is set,
+    /// otherwise `fallback`.
+    nonisolated static func effective(_ text: String,
+                                      allowsOverride: Bool = BuildConfig.allowsServerOverride,
+                                      fallback: String = platformDefault) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? platformDefault : trimmed
+        return allowsOverride && !trimmed.isEmpty ? trimmed : fallback
     }
 
     var isValid: Bool { Self.validate(effectiveBaseURLString) != nil }

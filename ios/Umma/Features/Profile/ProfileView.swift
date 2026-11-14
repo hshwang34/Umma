@@ -117,11 +117,14 @@ struct ProfileView: View {
     /// header row in the List doesn't turn into a navigation cell.
     private var header: some View {
         TabHeader(title: "Profile") {
-            Button { showServerSettings = true } label: {
-                Label("Server settings", systemImage: "gearshape")
+            // Debug builds only (brief 010): a release build always talks to production.
+            if BuildConfig.allowsServerOverride {
+                Button { showServerSettings = true } label: {
+                    Label("Server settings", systemImage: "gearshape")
+                }
+                .accessibilityLabel("Server settings")
+                .accessibilityIdentifier("profile.serverSettings")
             }
-            .accessibilityLabel("Server settings")
-            .accessibilityIdentifier("profile.serverSettings")
         }
     }
 
@@ -312,10 +315,12 @@ struct ProfileView: View {
 
     private var deviceSection: some View {
         Section {
-            LabeledContent("Server") {
-                Text(environment.serverSettings.effectiveBaseURLString.isEmpty ? "Not set" : environment.serverSettings.effectiveBaseURLString)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if BuildConfig.allowsServerOverride {
+                LabeledContent("Server") {
+                    Text(environment.serverSettings.effectiveBaseURLString.isEmpty ? "Not set" : environment.serverSettings.effectiveBaseURLString)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             LabeledContent("Camera", value: environment.camera.isAvailable ? "Available (\(environment.camera.kind.displayName))" : "Unavailable")
             LabeledContent("Microphone", value: environment.speech.isAvailable ? "Available (\(environment.speech.kind.displayName))" : "Unavailable")
@@ -323,7 +328,9 @@ struct ProfileView: View {
         } header: {
             Text("Device")
         } footer: {
-            Text("Capture inputs are checked on launch; the simulator reports camera and microphone as unavailable.")
+            if BuildConfig.isDebug {
+                Text("Capture inputs are checked on launch; the simulator reports camera and microphone as unavailable.")
+            }
         }
     }
 

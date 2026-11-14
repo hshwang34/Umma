@@ -32,6 +32,9 @@ final class AppEnvironment {
     /// Builds the Free (on-device) voice transport, and the Paid one that wraps it as fallback.
     let makeFreeVoiceTransport: @MainActor () -> any VoiceTransport
     let makePaidVoiceTransport: @MainActor (any VoiceTransport) -> any VoiceTransport
+    /// Brief 010: nil until a Google client ID is configured; the sign-in screen then has no
+    /// Google button.
+    let googleSignIn: GoogleSignInFlow?
     /// Brief 005: open cooking session (resume banner, floating pill, full-screen cooking view).
     let cooking: CookingSessionStore
 
@@ -93,6 +96,7 @@ final class AppEnvironment {
          voiceSettings: VoiceSettings? = nil,
          makeFreeVoiceTransport: @escaping @MainActor () -> any VoiceTransport = { FakeVoiceTransport(isAvailable: false) },
          makePaidVoiceTransport: @escaping @MainActor (any VoiceTransport) -> any VoiceTransport = { $0 },
+         googleSignIn: GoogleSignInFlow? = nil,
          sessionCache: SessionCaching = InMemorySessionCache()) {
         self.serverSettings = serverSettings
         self.api = api
@@ -105,6 +109,7 @@ final class AppEnvironment {
         self.voiceSettings = voiceSettings ?? VoiceSettings()
         self.makeFreeVoiceTransport = makeFreeVoiceTransport
         self.makePaidVoiceTransport = makePaidVoiceTransport
+        self.googleSignIn = googleSignIn
         cooking = CookingSessionStore(service: api, cache: sessionCache, owner: { [weak auth, weak serverSettings] in
             guard let user = auth?.user, let server = serverSettings?.effectiveBaseURLString, !server.isEmpty else { return nil }
             return SessionOwner(userId: user.id, server: server)
@@ -221,6 +226,9 @@ final class AppEnvironment {
                     audio: EnginePaidVoiceAudio(),
                     fallback: fallback
                 )
+            },
+            googleSignIn: GoogleSignInConfig(clientID: BuildConfig.googleIOSClientID).map {
+                GoogleSignInFlow(config: $0, presenter: SystemWebAuthPresenter())
             },
             sessionCache: SessionCache()
         )

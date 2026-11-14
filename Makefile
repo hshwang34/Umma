@@ -16,7 +16,7 @@ else
 SIM_UDID = $$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin); print([x['udid'] for k,v in d['devices'].items() if k.endswith('iOS-$(subst .,-,$(SIM_OS))') for x in v if x['name']=='$(SIM_NAME)'][0])")
 endif
 
-.PHONY: check backend-check ai-live-smoke voice-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed covers ios-project
+.PHONY: check backend-check ai-live-smoke voice-live-smoke ios-check ios-smoke release-ios env db-up db-down backend-dev backend-worker seed covers ios-project
 
 check: backend-check ios-check
 
@@ -72,3 +72,21 @@ ios-smoke: ios-project
 		-destination "platform=iOS Simulator,id=$$UDID" -parallel-testing-enabled NO \
 		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
 		UMMA_SMOKE_LOG="$(SMOKE_LOG)" -quiet
+
+# TestFlight (brief 010, docs/release/testflight.md). Wraps the shared personal pipeline
+# (~/Documents/Projects/IOS-RELEASE.md); credentials stay in ~/.appstoreconnect, never here.
+#   make release-ios                          archive only, prints bundle id / version / build
+#   make release-ios UPLOAD=1                 archive and upload to App Store Connect
+#   make release-ios UPLOAD=1 VERSION=0.2.0 BUILD=7
+# BUILD defaults to a UTC timestamp, so every upload gets a new, higher build number. The version
+# and build reach xcodebuild through XCODE_XCCONFIG_FILE, which overrides project.yml's defaults.
+RELEASE_SCRIPT ?= $(HOME)/Documents/Projects/.claude/scripts/testflight-upload.sh
+RELEASE_XCCONFIG := $(CURDIR)/ios/build/release-version.xcconfig
+VERSION ?=
+BUILD ?= $(shell date -u +%Y%m%d%H%M)
+UPLOAD ?=
+release-ios: ios-project
+	@test -x "$(RELEASE_SCRIPT)" || { echo "missing $(RELEASE_SCRIPT) (see docs/release/testflight.md)" >&2; exit 1; }
+	@mkdir -p ios/build
+	@{ echo "CURRENT_PROJECT_VERSION = $(BUILD)"; $(if $(VERSION),echo "MARKETING_VERSION = $(VERSION)";) } > "$(RELEASE_XCCONFIG)"
+	XCODE_XCCONFIG_FILE="$(RELEASE_XCCONFIG)" "$(RELEASE_SCRIPT)" ios/Umma.xcodeproj Umma $(if $(UPLOAD),,--archive-only)
