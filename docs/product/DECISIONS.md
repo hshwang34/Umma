@@ -302,3 +302,25 @@ PRD §4.2 (P1) forward and amends #4 ("P0 social = feed/save/share only").
   about $1.15/day; each 30 s session reserves its 45 s token's worst case, about $0.14). It is separate from
   the $0.25/day coach and photo cap (#19) and still inside the app-wide monthly soft and hard caps.
 *Lives in:* `docs/product/briefs/016-live-pantry-scan.md`.
+
+#29 · 2026-11-14 · **The pantry stays current through receipts and the cook's own words, not by detecting removal (brief 017).**
+- **Why:** a camera can show an item is there but not that it's gone. Miss counting, expiry
+  clocks and removal on cooking were each considered and dropped
+  (`docs/product/case-studies/pantry-removal.md`).
+- **Receipts:** a photo of a grocery receipt updates the pantry. **Exception to PAN-04 and "No
+  silent state changes", on the same terms as #28:** lines that are food, match the ingredient
+  dictionary and are high confidence are saved without a per-item tap. They carry source
+  `receipt`, show a "From receipt" chip and can be undone as a whole receipt. Unread lines are
+  skipped, never guessed.
+- **Key ingredient:** each recipe has one key ingredient, derived at fit time (named in the
+  title, else the first protein, else the largest by weight). It is not stored on the recipe. A
+  recipe is "can make" only when its key ingredient is available and seen within 14 days (#11).
+  The recipe screen opens with a card to confirm or discard it.
+- **Removal by the cook's words:** a spoken or typed "I don't have X" during cooking counts as
+  the explicit confirmation PAN-04 and PAN-06 require. It removes the pantry item. A swap still
+  needs approval (SUB-03).
+- **Grocery list:** pulled forward from PRD §4.2 (P1). In-app list only; no Apple Reminders
+  write-back (#2) and no store accounts.
+- **Unchanged:** no automatic pantry decrement (#4), no freshness or expiry judgements, receipt
+  photos are never stored, and receipt reading stays inside the $0.25 per person daily cap (#19).
+*Lives in:* `docs/product/briefs/017-pantry-stays-current.md`.
