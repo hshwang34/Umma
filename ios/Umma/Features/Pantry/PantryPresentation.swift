@@ -64,6 +64,40 @@ enum DuplicateChoice: String, Sendable, Hashable, CaseIterable {
     }
 }
 
+/// The ways to scan from the Pantry header. Flags decide which are offered; a single photo is
+/// always there.
+enum PantryScanOption: String, Identifiable, Equatable, CaseIterable {
+    case liveScan
+    case photo
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .liveScan: return "Live scan"
+        case .photo: return "One photo"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .liveScan: return "video"
+        case .photo: return "camera"
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case .liveScan: return "Pan the camera across your kitchen; you check the list at the end"
+        case .photo: return "Take or choose one photo; you review every item before it’s added"
+        }
+    }
+
+    static func options(liveScan: Bool) -> [PantryScanOption] {
+        liveScan ? [.liveScan, .photo] : [.photo]
+    }
+}
+
 /// What a pantry row shows. Built from a `PantryItem` and "now" so tests assert labels directly.
 struct PantryRowPresentation: Identifiable, Equatable {
     let id: UUID

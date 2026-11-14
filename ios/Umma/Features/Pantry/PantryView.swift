@@ -8,6 +8,7 @@ struct PantryView: View {
     @State private var editor: PantryItemEditorModel?
     @State private var capture: PantryCaptureKind?
     @State private var pendingDelete: PantryItem?
+    @State private var showsLiveScan = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,12 @@ struct PantryView: View {
                 environment.notePantryChanged()
             }
         }
+        .sheet(isPresented: $showsLiveScan) {
+            LiveScanSheet { added in
+                model?.apply(added)
+                environment.notePantryChanged()
+            }
+        }
     }
 
     private func makeModel() -> PantryViewModel {
@@ -55,15 +62,46 @@ struct PantryView: View {
             }
             .accessibilityIdentifier("pantry.speak")
             .accessibilityHint("Say or type what you have; you review every item before it’s added")
-            Button { capture = .scan } label: {
-                Label("Scan", systemImage: "camera")
-            }
-            .accessibilityIdentifier("pantry.scan")
-            .accessibilityHint("Take or choose one photo; you review every item before it’s added")
+            scanControl
             Button { openAdd() } label: {
                 Label("Add", systemImage: "plus")
             }
             .accessibilityIdentifier("pantry.add")
+        }
+    }
+
+    /// One way to scan → a plain button. More than one (live scan on) → a menu to pick from.
+    @ViewBuilder
+    private var scanControl: some View {
+        let options = PantryScanOption.options(liveScan: environment.captureFlags.liveScan)
+        if options == [.photo] {
+            Button { open(.photo) } label: {
+                Label("Scan", systemImage: "camera")
+            }
+            .accessibilityIdentifier("pantry.scan")
+            .accessibilityHint(PantryScanOption.photo.hint)
+        } else {
+            Menu {
+                ForEach(options) { option in
+                    Button { open(option) } label: {
+                        Label(option.title, systemImage: option.systemImage)
+                    }
+                    .accessibilityIdentifier("pantry.scan.\(option.rawValue)")
+                }
+            } label: {
+                Label("Scan", systemImage: "camera")
+                    .frame(minWidth: Metrics.minTapTarget, minHeight: Metrics.minTapTarget)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("pantry.scan")
+            .accessibilityHint("Choose how to scan")
+        }
+    }
+
+    private func open(_ option: PantryScanOption) {
+        switch option {
+        case .liveScan: showsLiveScan = true
+        case .photo: capture = .scan
         }
     }
 

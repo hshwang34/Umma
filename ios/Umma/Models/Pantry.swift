@@ -10,6 +10,8 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
     case manual
     case voice
     case photo
+    /// Written only by the server when a live scan finishes (brief 016). Never sent.
+    case live
     /// Anything the server sends that this build doesn't know. Shown neutrally, never sent.
     case other
 
@@ -24,6 +26,7 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
         case .manual: return "Manual"
         case .voice: return "Voice"
         case .photo: return "Photo"
+        case .live: return "Auto-added"
         case .other: return "Other"
         }
     }
@@ -33,6 +36,7 @@ enum PantrySource: String, Codable, Sendable, CaseIterable {
         case .manual: return "hand.point.up.left"
         case .voice: return "mic"
         case .photo: return "camera"
+        case .live: return "sparkles"
         case .other: return "questionmark.circle"
         }
     }

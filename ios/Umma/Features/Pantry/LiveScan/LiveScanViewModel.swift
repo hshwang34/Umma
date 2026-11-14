@@ -89,7 +89,7 @@ final class LiveScanViewModel {
     }
 
     static let scanSeconds = 120
-    static let demoLabel = "Demo mode — not a real detection"
+    nonisolated static let demoLabel = "Demo mode — not a real detection"
     static let limitMessage = "Today’s live scan allowance is used up. Tap Done to keep what you scanned, or add more by photo or voice."
     static let connectFailedMessage = "Couldn’t connect the live scan. Try again, or add items by photo or voice."
     static let scanClosedMessage = "This scan can’t take more items. Tap Done to keep what you scanned."
@@ -107,6 +107,8 @@ final class LiveScanViewModel {
     /// The token (or the server) said demo: scripted items, nothing auto-saved.
     private(set) var isDemo = false
     private(set) var message: String?
+    /// The last start failed because camera access is denied; the screen offers "Open Settings".
+    private(set) var permissionDenied = false
     private(set) var result: LiveScanResultPresentation?
     private(set) var scanID: UUID?
 
@@ -173,6 +175,7 @@ final class LiveScanViewModel {
         let run = gate.begin()
         phase = .starting
         message = nil
+        permissionDenied = false
         didAutoReconnect = false
         do {
             try await camera.startPreview()
@@ -201,6 +204,7 @@ final class LiveScanViewModel {
             guard gate.isCurrent(run) else { return }
             // A transport error has no user copy of its own.
             let text = error is LiveScanError ? Self.connectFailedMessage : error.pantryMessage
+            if case CaptureError.permissionDenied = error { permissionDenied = true }
             await stop(Self.isLimit(error) ? .limitReached : .failed, text)
         }
     }
