@@ -92,7 +92,7 @@ final class LiveScanViewModel {
     static let demoLabel = "Demo mode — not a real detection"
     static let limitMessage = "Today’s live scan allowance is used up. Tap Done to keep what you scanned, or add more by photo or voice."
     static let connectFailedMessage = "Couldn’t connect the live scan. Try again, or add items by photo or voice."
-    static let connectionMessage = "The scan lost its connection. Your basket is safe."
+    static let connectionMessage = "The scan lost its connection. Your basket is kept."
 
     private(set) var phase: Phase = .idle
     private(set) var basket: [LiveScanBasketEntry] = []
