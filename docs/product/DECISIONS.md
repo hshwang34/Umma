@@ -324,3 +324,15 @@ PRD §4.2 (P1) forward and amends #4 ("P0 social = feed/save/share only").
 - **Unchanged:** no automatic pantry decrement (#4), no freshness or expiry judgements, receipt
   photos are never stored, and receipt reading stays inside the $0.25 per person daily cap (#19).
 *Lives in:* `docs/product/briefs/017-pantry-stays-current.md`.
+
+#30 · 2026-11-14 · **Ingredients get brand icons, drawn like the persimmon mark (brief 018).**
+- **Why:** the pantry is a list of plain words, hard to scan at 30 items, and doesn't look like
+  Umma. The PM compared four directions (`docs/briefing/umma-pantry-icon-options-2026-11-14.html`)
+  and chose A, "Persimmon flat": flat brand-palette fills, no outlines, real cut-out details.
+  Emoji were rejected as off-brand.
+- **How:** one generator in `docs/brand/tools/` draws about 55 forms in light and dark. Every
+  dictionary entry names its icon, with a fallback per category, then a basket. Pantry items gain
+  an additive `icon` field.
+- **Unchanged:** the icon is decoration only. Names stay the source of truth for matching, fit and
+  safety, and an icon never signals status.
+*Lives in:* `docs/product/briefs/018-ingredient-icons.md`.
