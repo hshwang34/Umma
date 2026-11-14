@@ -85,6 +85,17 @@ class DevLoginVerifyRequest(BaseModel):
     code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
 
 
+class AppleSignInRequest(BaseModel):
+    """``POST /auth/apple`` (brief 010). ``nonce`` is the raw value the phone generated; Apple's
+    token carries its SHA-256. ``display_name`` is only available on a person's first sign-in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    identity_token: str = Field(min_length=20, max_length=8192)
+    nonce: str = Field(min_length=16, max_length=128)
+    display_name: str | None = Field(default=None, max_length=120)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
