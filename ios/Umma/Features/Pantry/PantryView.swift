@@ -9,6 +9,7 @@ struct PantryView: View {
     @State private var capture: PantryCaptureKind?
     @State private var pendingDelete: PantryItem?
     @State private var showsLiveScan = false
+    @State private var showsShopping = false
 
     var body: some View {
         NavigationStack {
@@ -22,6 +23,7 @@ struct PantryView: View {
             .background(SLColor.background)
             .navigationTitle("Pantry")
             .tabRootHeader()
+            .navigationDestination(isPresented: $showsShopping) { ShoppingListView() }
         }
         .task(id: environment.pantryRevision) {
             let model = self.model ?? makeModel()
@@ -59,6 +61,10 @@ struct PantryView: View {
     /// Brief 019: the tab's own header, with Speak / Scan / Add at its trailing edge.
     private var header: some View {
         TabHeader(title: "Pantry") {
+            Button { showsShopping = true } label: {
+                Label("Shopping list", systemImage: "cart")
+            }
+            .accessibilityIdentifier("pantry.shopping")
             Button { capture = .speak } label: {
                 Label("Speak", systemImage: "mic")
             }

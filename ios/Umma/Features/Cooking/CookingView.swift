@@ -173,7 +173,11 @@ struct CookingView: View {
             if let toast { AccessibilityNotification.Announcement(toast).post() }
         }
         .onChange(of: model.isEnded) { _, ended in
-            if ended { environment.cooking.closeCookingScreen() }
+            guard ended else { return }
+            // The finish sheet stays up to show what went on the shopping list; it closes the
+            // screen itself. With nothing to show (or no sheet), close straight away.
+            if showSessionEnd, model.shoppingSummary != nil { return }
+            environment.cooking.closeCookingScreen()
         }
         .sheet(isPresented: $showAssistant) {
             if let assistant {
@@ -189,10 +193,14 @@ struct CookingView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showSessionEnd) {
-            SessionEndView(cooking: model) {
+        .sheet(isPresented: $showSessionEnd, onDismiss: {
+            if model.isEnded { environment.cooking.closeCookingScreen() }
+        }) {
+            SessionEndView(cooking: model, onCancel: {
                 showSessionEnd = false
-            }
+            }, onClose: {
+                environment.cooking.closeCookingScreen()
+            })
             .interactiveDismissDisabled(model.isSending)
         }
         .confirmationDialog("Stop cooking?", isPresented: $confirmAbandon, titleVisibility: .visible) {

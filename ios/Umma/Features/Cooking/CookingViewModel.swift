@@ -25,6 +25,10 @@ final class CookingViewModel: CookingSessionClient {
     private(set) var phase: Phase = .loading
     /// The canonical Session (server's, or the cached copy while `isOffline`).
     private(set) var session: CookingSession?
+    /// Brief 017: what finishing this cook put on the shopping list. Only the answer to
+    /// `complete` carries it, so it is kept here when a later read comes back without it.
+    private(set) var shoppingAdded: [String] = []
+    var shoppingSummary: ShoppingAddedSummary? { isEnded ? ShoppingAddedSummary(names: shoppingAdded) : nil }
     /// Showing a cached copy, or the last command could not reach the server. Read-only.
     private(set) var isOffline = false
     private(set) var isSending = false
@@ -563,6 +567,7 @@ final class CookingViewModel: CookingSessionClient {
         if let current = session, current.id == latest.id, latest.revision < current.revision { return }
         let stepChanged = session?.stepIndex != latest.stepIndex
         session = latest
+        if !latest.shoppingAdded.isEmpty { shoppingAdded = latest.shoppingAdded }
         if announcedDoneTimers == nil {
             // Baseline when the screen opens: timers already done then are never announced.
             announcedDoneTimers = Set(TimerRow.rows(for: latest.timers, now: now()).filter(\.isDone).map(\.id))
