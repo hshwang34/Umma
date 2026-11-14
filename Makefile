@@ -6,6 +6,15 @@ SIM ?= iPhone 15
 # on the newest installed runtime; see ios/scripts/sim-pick.sh. CI passes SIM explicitly.
 SIM_NAME := $(shell ios/scripts/sim-pick.sh name "$(SIM)")
 SIM_OS ?= $(shell ios/scripts/sim-pick.sh os "$(SIM)")
+# Locally, iOS targets lease this worktree's simulator from the shared pool
+# (~/Documents/Projects/.claude/scripts/sim, see ~/.claude/CLAUDE.md), so parallel sessions never
+# share or multiply simulators. CI, or `make ... SIM_POOL=`, uses $(SIM) via sim-pick.sh instead.
+SIM_POOL ?= $(wildcard $(HOME)/Documents/Projects/.claude/scripts/sim)
+ifneq ($(and $(SIM_POOL),$(if $(CI),,local)),)
+SIM_UDID = $$($(SIM_POOL) acquire)
+else
+SIM_UDID = $$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin); print([x['udid'] for k,v in d['devices'].items() if k.endswith('iOS-$(subst .,-,$(SIM_OS))') for x in v if x['name']=='$(SIM_NAME)'][0])")
+endif
 
 .PHONY: check backend-check ai-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed ios-project
 
@@ -40,18 +49,18 @@ ios-project:
 
 # Ad-hoc signing (identity "-") needs no certificate or profile, but unlike CODE_SIGNING_ALLOWED=NO
 # it embeds the keychain-access-groups entitlement, which the simulator Keychain requires (-34018).
+# -parallel-testing-enabled NO: parallel testing boots a simulator clone per worker.
 ios-check: ios-project
-	cd ios && xcodebuild test -project Umma.xcodeproj -scheme Umma \
-		-destination 'platform=iOS Simulator,name=$(SIM_NAME),OS=$(SIM_OS)' \
+	cd ios && UDID=$(SIM_UDID) && xcodebuild test -project Umma.xcodeproj -scheme Umma \
+		-destination "platform=iOS Simulator,id=$$UDID" -parallel-testing-enabled NO \
 		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO -quiet
 
 # Live smoke: fresh install → two-step dev sign-in (code read from the backend log) → seeded
 # recipe. Needs `make backend-dev` running with its log at SMOKE_LOG (default below).
 SMOKE_LOG ?= $(CURDIR)/backend/dev.log
-SMOKE_UDID = $$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin); print([x['udid'] for k,v in d['devices'].items() if k.endswith('iOS-$(subst .,-,$(SIM_OS))') for x in v if x['name']=='$(SIM_NAME)'][0])")
 ios-smoke: ios-project
-	cd ios && UDID=$(SMOKE_UDID); xcrun simctl boot "$$UDID" 2>/dev/null; xcrun simctl uninstall "$$UDID" com.umma.ios 2>/dev/null; \
+	cd ios && UDID=$(SIM_UDID) && xcrun simctl boot "$$UDID" 2>/dev/null; xcrun simctl uninstall "$$UDID" com.umma.ios 2>/dev/null; \
 	xcodebuild test -project Umma.xcodeproj -scheme UmmaSmoke \
-		-destination 'platform=iOS Simulator,name=$(SIM_NAME),OS=$(SIM_OS)' \
+		-destination "platform=iOS Simulator,id=$$UDID" -parallel-testing-enabled NO \
 		CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
 		UMMA_SMOKE_LOG="$(SMOKE_LOG)" -quiet
