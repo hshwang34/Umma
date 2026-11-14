@@ -96,6 +96,14 @@ struct DevLoginVerifyRequest: Encodable, Sendable {
     let code: String
 }
 
+/// `POST /v1/auth/apple` (brief 010). `nonce` is the raw value; Apple's token carries its SHA-256.
+struct AppleSignInRequest: Encodable, Sendable {
+    let identityToken: String
+    let nonce: String
+    /// Apple only gives the name on a person's first sign-in; omitted when nil.
+    let displayName: String?
+}
+
 struct AuthResponse: Decodable, Sendable {
     let accessToken: String
     let tokenType: String

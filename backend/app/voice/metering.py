@@ -1,6 +1,6 @@
 """Paid-voice spend through the existing cost guard (brief 012 PR 2).
 
-Both capabilities are interactive, so they sit under the per-person $0.25 UTC-day cap and the
+Both capabilities are interactive, so they sit under the per-person UTC-day cap ($0.50) and the
 global monthly caps, like the coach.
 
 * ``voice_stt``: a stream reserves audio in blocks (``block_ms`` of audio at a time) before it

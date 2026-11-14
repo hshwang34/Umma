@@ -193,6 +193,9 @@ async def test_every_change_bumps_exactly_once_and_noops_and_failures_do_not(
     await rejected("start", 409)
     await rejected("next", 422, user_confirmed=False)
     await step("complete")
+    # Only the completion's own response names what went on the shopping list (brief 017).
+    assert s["shopping_added"]
+    s = {**s, "shopping_added": []}
     for name in ("next", "pause", "abandon", "start_timer"):
         extra = {"timer": {"label": "x", "duration_seconds": 5}} if name == "start_timer" else {}
         await rejected(name, 409, **extra)

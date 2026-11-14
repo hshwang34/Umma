@@ -1,6 +1,8 @@
+import AuthenticationServices
 import SwiftUI
 
-/// Two-step dev sign-in: email → the backend logs a 6-digit code → code → token.
+/// Sign in with Apple for everyone (brief 010). Debug builds also show the two-step dev sign-in
+/// (email → the backend logs a 6-digit code → code → token) for a local server.
 struct SignInView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var email = ""
@@ -9,6 +11,9 @@ struct SignInView: View {
     @State private var errorMessage: String?
     @State private var showServerSettings = false
     @State private var serverStatus: ServerStatus = .checking
+    /// The nonce of the Apple request in flight; the server checks it against the token.
+    @State private var appleNonce: SignInNonce?
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var focus: Field?
 
     private enum Field { case email, code }
@@ -33,11 +38,16 @@ struct SignInView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
                     brand
+                    #if DEBUG
                     if let challenge = environment.auth.pendingChallenge {
                         codeStep(challenge)
                     } else {
+                        appleStep
                         emailStep
                     }
+                    #else
+                    appleStep
+                    #endif
                     serverFooter
                 }
                 .padding(Spacing.screen)
@@ -71,6 +81,30 @@ struct SignInView: View {
                 .foregroundStyle(SLColor.textSecondary)
         }
         .padding(.top, Spacing.xxl)
+    }
+
+    // MARK: - Sign in with Apple
+
+    private var appleStep: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            SignInWithAppleButton(.signIn) { request in
+                let nonce = SignInNonce()
+                appleNonce = nonce
+                request.requestedScopes = [.fullName, .email]
+                request.nonce = nonce.hashed
+            } onCompletion: { result in
+                finishAppleSignIn(result)
+            }
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+            .frame(height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            .disabled(isSubmitting)
+            .accessibilityIdentifier("signin.apple")
+
+            #if !DEBUG
+            inlineError
+            #endif
+        }
     }
 
     // MARK: - Step 1: email
@@ -264,6 +298,28 @@ struct SignInView: View {
             try await environment.auth.verify(challengeId: challenge.challengeId, code: code)
         }
     }
+
+    private func finishAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        let nonce = appleNonce
+        appleNonce = nil
+        switch result {
+        case .failure(let error):
+            // Closing Apple's sheet is not an error worth a message.
+            if (error as? ASAuthorizationError)?.code == .canceled { return }
+            errorMessage = Self.appleFailureMessage
+        case .success(let authorization):
+            guard let nonce,
+                  let apple = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let credential = try? AppleSignIn.credential(identityToken: apple.identityToken, fullName: apple.fullName)
+            else {
+                errorMessage = Self.appleFailureMessage
+                return
+            }
+            run { try await environment.auth.signInWithApple(credential, nonce: nonce) }
+        }
+    }
+
+    private static let appleFailureMessage = "Couldn’t sign in with Apple. Try again."
 
     private func run(_ action: @escaping @MainActor () async throws -> Void) {
         errorMessage = nil

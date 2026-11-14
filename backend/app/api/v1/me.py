@@ -25,8 +25,9 @@ async def me(user: CurrentUser, settings: SettingsDep) -> UserOut:
 async def patch_me(
     body: UserPatch, session: DbSession, user: CurrentUser, settings: SettingsDep
 ) -> UserOut:
-    """Set the cook/creator role chosen in onboarding (brief 015)."""
-    return UserOut.from_model(await users_service.set_role(session, user, body.role), settings)
+    """Change the onboarding role (brief 015) or default servings (brief 020)."""
+    changes = body.model_dump(include=body.model_fields_set)
+    return UserOut.from_model(await users_service.update_profile(session, user, changes), settings)
 
 
 @router.post("/me/onboarding/complete", response_model=UserOut)
