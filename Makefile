@@ -7,7 +7,7 @@ SIM ?= iPhone 15
 SIM_NAME := $(shell ios/scripts/sim-pick.sh name "$(SIM)")
 SIM_OS ?= $(shell ios/scripts/sim-pick.sh os "$(SIM)")
 
-.PHONY: check backend-check ai-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed ios-project
+.PHONY: check backend-check ai-live-smoke voice-live-smoke ios-check ios-smoke env db-up db-down backend-dev backend-worker seed ios-project
 
 check: backend-check ios-check
 
@@ -16,6 +16,9 @@ backend-check:
 
 ai-live-smoke:
 	$(MAKE) -C backend ai-live-smoke
+
+voice-live-smoke:
+	$(MAKE) -C backend voice-live-smoke
 
 env:
 	$(MAKE) -C backend env
