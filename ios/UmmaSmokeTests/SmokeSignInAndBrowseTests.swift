@@ -433,6 +433,109 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         attach(app, "site-fit")
     }
 
+    // MARK: - Brief 014 capture walkthrough
+
+    /// Records "Mum's Kimchi Jjigae" by voice against a live backend (mock AI), with a scripted
+    /// cook standing in for the mic (`-capture.script kimchi`, DEBUG builds only). The simmer time is
+    /// never said, so Umma asks. Screenshots every state as `capture-*` attachments. Skipped unless
+    /// `UMMA_CAPTURE_WALKTHROUGH=1` reaches the runner (`TEST_RUNNER_UMMA_CAPTURE_WALKTHROUGH=1`).
+    /// Needs the backend worker running so the draft gets generated.
+    func testCaptureRecordWalkthrough() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["UMMA_CAPTURE_WALKTHROUGH"] == "1",
+                          "set UMMA_CAPTURE_WALKTHROUGH=1 to run the capture walkthrough")
+        let app = try launchSignedIn(email: "capture-\(Int(Date().timeIntervalSince1970))@umma.dev",
+                                     extraArguments: ["-capture.script", "kimchi", "-feature.voiceCapture", "YES"])
+        app.tabBars.buttons["Profile"].tap()
+        let create = app.buttons["profile.createRecipe"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10), "Profile has no New recipe")
+        create.tap()
+        let record = app.buttons["newRecipe.recordVoice"]
+        XCTAssertTrue(record.waitForExistence(timeout: 5), "chooser did not open")
+        Thread.sleep(forTimeInterval: 1)
+        shot(app, "01-chooser")
+        record.tap()
+
+        let titleField = app.textFields["record.titleHint"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5), "record screen did not open")
+        type("Mum's Kimchi Jjigae", into: titleField, in: app)
+        app.buttons["record.start"].tap()
+
+        let heard = app.descendants(matching: .any)["record.heard"]
+        XCTAssertTrue(waitForLabel(heard, containing: "pork belly", timeout: 30), "captions never showed what was said")
+        XCTAssertTrue(waitForLabel(heard, containing: "kimchi", timeout: 15))
+        shot(app, "02-recording-captions")
+
+        let question = app.staticTexts["record.question"]
+        XCTAssertTrue(question.waitForExistence(timeout: 60), "Umma never asked about the simmer time")
+        XCTAssertTrue(question.label.lowercased().contains("simmer"), "asked: \(question.label)")
+        shot(app, "03-question")
+        let answer = app.descendants(matching: .any)["record.answer"]
+        XCTAssertTrue(answer.waitForExistence(timeout: 20), "the answer was not heard")
+        shot(app, "04-answer")
+        XCTAssertTrue(waitForDisappearance(app.descendants(matching: .any)["record.questionCard"], timeout: 20), "the answer window never closed")
+
+        let pauseToggle = app.buttons["record.pauseToggle"]
+        pauseToggle.tap()
+        XCTAssertTrue(waitForLabel(app.descendants(matching: .any)["record.header"], containing: "Paused", timeout: 5))
+        shot(app, "05-paused")
+        pauseToggle.tap()
+        XCTAssertTrue(waitForLabel(heard, containing: "spring onions", timeout: 40), "the last line never arrived")
+
+        app.buttons["record.done"].tap()
+        shot(app, "06-done")
+        XCTAssertTrue(waitForLabel(question, containing: "people", timeout: 40), "no wrap-up question about servings")
+        XCTAssertFalse(app.descendants(matching: .any)["record.voiceBar"].descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", "How many people")).firstMatch.exists,
+                       "the open question shows once, on its card")
+        shot(app, "07-wrapup-question")
+
+        let generating = app.staticTexts["generating.title"]
+        if generating.waitForExistence(timeout: 60) { shot(app, "08-generating") }
+        let review = app.descendants(matching: .any)["draft.aiReview"].firstMatch
+        XCTAssertTrue(review.waitForExistence(timeout: 90), "the AI draft never opened in the editor")
+        Thread.sleep(forTimeInterval: 1.5)
+        shot(app, "09-draft-ai-labels")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Servings needs review'")).firstMatch.exists,
+                      "she skipped the servings question, so servings must say needs review")
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.5)
+        shot(app, "09b-draft-ingredients")
+
+        let publish = app.buttons["draft.publish"]
+        // Servings were never said: set them, as she would.
+        if !wait(for: publish, enabled: true, timeout: 5) {
+            app.swipeDown()
+            app.swipeDown()
+            app.steppers["draft.servings"].buttons.element(boundBy: 1).tap()
+        }
+        XCTAssertTrue(wait(for: publish, enabled: true, timeout: 15), "the draft never became publishable")
+        publish.tap()
+        let confirm = app.buttons["publish.confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no publish confirmation")
+        shot(app, "10-publish-confirm")
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["published.title"].waitForExistence(timeout: 15), "publish did not finish")
+        shot(app, "11-published")
+    }
+
+    private func shot(_ app: XCUIApplication, _ name: String) {
+        // Let crossfades settle so no frame shows two labels at once.
+        Thread.sleep(forTimeInterval: 0.8)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "capture-\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func waitForLabel(_ element: XCUIElement, containing text: String, timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS[c] %@", text), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private func waitForDisappearance(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
     /// Cooking screen → Ask → "what does this step mean?" → an answer with a step badge → Done.
     private func askCoach(_ app: XCUIApplication) {
         // Repeat / Slower / Ask / Look live in the tools menu (brief 013 Part C).
@@ -498,7 +601,7 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
 
     /// Launches, signs out any leftover session, then signs in with the code from the server log.
     /// Onboarding (brief 015) is off unless asked for, so the older flows start on the tabs.
-    private func launchSignedIn(email: String, onboarding: Bool = false) throws -> XCUIApplication {
+    private func launchSignedIn(email: String, onboarding: Bool = false, extraArguments: [String] = []) throws -> XCUIApplication {
         let logPath = try XCTUnwrap(
             ProcessInfo.processInfo.environment["UMMA_SMOKE_LOG"],
             "UMMA_SMOKE_LOG must point at the backend log (use `make ios-smoke`)"
@@ -506,8 +609,11 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         let app = XCUIApplication()
         // `-auth.hasLaunched NO` overrides that UserDefaults key for this launch only, so the app
         // takes its fresh-install path and discards any session a previous run left behind.
-        app.launchArguments += ["-serverBaseURL", "http://localhost:8000", "-auth.hasLaunched", "NO"]
+        // `UMMA_SMOKE_BASE_URL` (TEST_RUNNER_ prefix on the xcodebuild line) points at another backend.
+        let baseURL = ProcessInfo.processInfo.environment["UMMA_SMOKE_BASE_URL"] ?? "http://localhost:8000"
+        app.launchArguments += ["-serverBaseURL", baseURL, "-auth.hasLaunched", "NO"]
         app.launchArguments += ["-feature.onboarding", onboarding ? "YES" : "NO"]
+        app.launchArguments += extraArguments
         app.launch()
 
         // Step 1: email
