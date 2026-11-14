@@ -9,8 +9,8 @@ protocol LiveScanBasketService: Sendable {
     /// One model-reported item, normalised and deduplicated on the server. 409 `STATE_CONFLICT`
     /// when the scan is finished or the basket is full; 422 when the name isn't an ingredient.
     func addLiveScanItem(scanID: UUID, _ item: LiveScanItemReport) async throws -> LiveScanItemResult
-    /// `DELETE .../items/{key}` → 204. 404 when the item isn't in the basket. The key goes into the
-    /// path as is (the URL builder percent-encodes it), so a key containing "/" can't be removed.
+    /// `DELETE .../items/{key}` → 204. 404 when the item isn't in the basket. The key must be a
+    /// single path segment; one containing "/", "..", "?", "#" or "%" is refused before any request.
     func removeLiveScanItem(scanID: UUID, key: String) async throws
     /// Saves new, high-confidence, recognised items and returns the rest for review. A retry
     /// replays the first answer.
@@ -27,7 +27,18 @@ extension APIClient: LiveScanBasketService {
     }
 
     func removeLiveScanItem(scanID: UUID, key: String) async throws {
+        // The key is a server-normalised name that started as model output. It must stay one
+        // path segment: a "/" or a dot segment would address a different route.
+        guard Self.isSinglePathSegment(key) else { throw APIError.invalidURL(key) }
         _ = try await raw(.delete("/v1/pantry/live-scans/\(Self.pathId(scanID))/items/\(key)"))
+    }
+
+    static func isSinglePathSegment(_ value: String) -> Bool {
+        guard !value.isEmpty, value != ".", value != ".." else { return false }
+        return !value.unicodeScalars.contains { scalar in
+            scalar == "/" || scalar == "\\" || scalar == "?" || scalar == "#" || scalar == "%"
+                || CharacterSet.controlCharacters.contains(scalar)
+        }
     }
 
     func finishLiveScan(scanID: UUID) async throws -> LiveScanFinished {
