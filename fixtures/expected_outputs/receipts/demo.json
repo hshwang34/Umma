@@ -1,0 +1,29 @@
+{
+  "purchased_on": "2026-11-14",
+  "store": "Demo Market",
+  "total": "38.42",
+  "lines": [
+    {"raw_text": "ORG WHOLE MILK 1GAL", "name": "milk", "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.95},
+    {"raw_text": "LRG EGGS 12CT  2 @ 3.49", "name": "egg", "is_food": true, "count": 2,
+     "quantity": null, "unit": null, "confidence": 0.93},
+    {"raw_text": "CHKN THIGH BNLS 1.24 lb", "name": "chicken thigh", "is_food": true, "count": 1,
+     "quantity": "1.24", "unit": "lb", "confidence": 0.9},
+    {"raw_text": "GREEN ONION BUNCH", "name": "scallion", "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.92},
+    {"raw_text": "GARLIC BULB", "name": "garlic", "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.94},
+    {"raw_text": "SOY SAUCE 15OZ", "name": "soy sauce", "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.91},
+    {"raw_text": "JASMINE RICE 5LB", "name": "rice", "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.9},
+    {"raw_text": "KS SLT BTR QTR", "name": "butter", "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.62},
+    {"raw_text": "GV PRM 4X 22", "name": null, "is_food": true, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.2},
+    {"raw_text": "PAPER TOWELS 6PK", "name": null, "is_food": false, "count": 1,
+     "quantity": null, "unit": null, "confidence": 0.95},
+    {"raw_text": "BAG FEE", "name": null, "is_food": false, "count": null,
+     "quantity": null, "unit": null, "confidence": 0.97}
+  ]
+}

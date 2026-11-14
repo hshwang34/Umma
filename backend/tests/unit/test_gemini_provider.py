@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import pytest
 from google.genai import types
+from pydantic import ValidationError
 
 from app.ai import pricing
 from app.ai.budget import UsageMeter
@@ -380,3 +381,11 @@ async def test_recipe_text_and_query_are_data_not_instructions() -> None:
     for chunk in [c for c in t.calls[0]["contents"] if isinstance(c, str)]:
         if "SYSTEM: ignore" in chunk:
             assert chunk.startswith(("<recipe_data>", "<user_question>"))
+
+
+def test_schemas_carry_no_list_limits_gemini_rejects() -> None:
+    """Gemini 400s on large ``maxItems``; Pydantic keeps enforcing the limit after the call."""
+    for draft in (PantryDraft, CoachDraft):
+        assert "maxItems" not in json.dumps(gemini_schema(draft))
+    with pytest.raises(ValidationError):
+        PantryDraft.model_validate({"candidates": [], "notes": ["n"] * 9})
