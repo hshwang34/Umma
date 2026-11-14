@@ -19,14 +19,17 @@ struct ExploreView: View {
                 }
             }
             .background(SLColor.background)
+            // Brief 019: our own header; the title stays for the tab's back-button label.
             .navigationTitle("Explore")
-            .navigationBarTitleDisplayMode(.large)
+            .tabRootHeader()
             .navigationDestination(for: RecipeRoute.self) { route in
                 switch route {
                 case .creator(let id):
                     CreatorProfileView(creatorId: id)
+                        .pushedFromTabRoot()
                 case .recipe(let id, let card):
                     RecipeDetailView(recipeId: id, card: card)
+                        .pushedFromTabRoot()
                         .zoomTransition(sourceID: card == nil ? nil : id, in: zoom, enabled: !reduceMotion)
                 }
             }
@@ -56,6 +59,14 @@ private struct ExploreContent: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Spacing.lg) {
+                TabHeader(title: "Explore")
+                InPageSearchField(
+                    text: $model.searchText,
+                    prompt: "Search recipes or ingredients",
+                    identifier: "explore.search"
+                ) {
+                    Task { await model.submitSearchNow() }
+                }
                 if model.query.isEmpty {
                     feedPicker
                 }
@@ -100,10 +111,7 @@ private struct ExploreContent: View {
         .refreshable {
             await model.refresh()
         }
-        .searchable(text: $model.searchText, prompt: "Search recipes or ingredients")
-        .onSubmit(of: .search) {
-            Task { await model.submitSearchNow() }
-        }
+        .scrollDismissesKeyboard(.interactively)
         .onChange(of: environment.followRevision) {
             // Brief 015: a follow changes Following and the For You boost.
             Task { await model.refresh() }
@@ -279,9 +287,12 @@ private struct FilterChipButton: View {
 private struct ExploreSkeleton: View {
     var body: some View {
         ScrollView {
-            Self.cards
-                .padding(.horizontal, Spacing.screen)
-                .padding(.vertical, Spacing.sm)
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                TabHeader(title: "Explore")
+                Self.cards
+            }
+            .padding(.horizontal, Spacing.screen)
+            .padding(.vertical, Spacing.sm)
         }
         .scrollDisabled(true)
     }
