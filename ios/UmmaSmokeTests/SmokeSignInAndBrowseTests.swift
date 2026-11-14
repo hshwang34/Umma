@@ -367,6 +367,163 @@ final class SmokeSignInAndBrowseTests: XCTestCase {
         attach(app, "site-fit")
     }
 
+    // MARK: - Feature briefing: documenting a recipe (creator flow)
+
+    /// Walks a creator documenting a family recipe end to end, attaching `author-*` screenshots:
+    /// Profile → new draft → details → ingredient editor → step editor → preview → publish →
+    /// share → the published recipe as a cook sees it. Skipped unless `UMMA_AUTHOR_CAPTURE=1`
+    /// reaches the runner (`TEST_RUNNER_UMMA_AUTHOR_CAPTURE=1`).
+    func testCaptureAuthoringFlow() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["UMMA_AUTHOR_CAPTURE"] == "1",
+                          "set UMMA_AUTHOR_CAPTURE=1 to capture the authoring flow")
+        let app = try launchSignedIn(email: "mum-\(Int(Date().timeIntervalSince1970))@umma.dev")
+        let title = "Mum's Kimchi Jjigae"
+
+        app.tabBars.buttons["Profile"].tap()
+        let create = app.buttons["profile.createRecipe"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10), "Profile has no Create recipe")
+        settle(); attach(app, "author-01-profile")
+        create.tap()
+
+        let titleField = app.descendants(matching: .any)["draft.title"].firstMatch
+        XCTAssertTrue(titleField.waitForExistence(timeout: 10), "editor did not open")
+        settle(); attach(app, "author-02-empty-draft")
+        type(title, into: titleField, in: app)
+        type("The stew she made every cold Sunday. Sour kimchi, pork belly, soft tofu.",
+             into: app.descendants(matching: .any)["draft.summary"].firstMatch, in: app)
+        hideKeyboard(app)
+        let plus = app.descendants(matching: .any)["draft.servings"].firstMatch.buttons.element(boundBy: 1)
+        if plus.exists { plus.tap(); plus.tap() }
+        settle(); attach(app, "author-03-details")
+
+        let ingredients: [(String, String, String, String)] = [
+            ("aged kimchi", "2", "cup", "chopped, with its juice"),
+            ("pork belly", "200", "g", "sliced thin"),
+            ("soft tofu", "1", "block", "cut into cubes"),
+            ("gochugaru", "1", "tbsp", ""),
+        ]
+        for (index, item) in ingredients.enumerated() {
+            let add = app.buttons["draft.addIngredient"]
+            scrollUntilHittable(add, in: app)
+            add.tap()
+            let name = app.textFields["ingredient.name"]
+            XCTAssertTrue(name.waitForExistence(timeout: 5), "ingredient editor did not open")
+            type(item.0, into: name, in: app)
+            type(item.1, into: app.textFields["ingredient.quantity"], in: app)
+            type(item.2, into: app.textFields["ingredient.unit"], in: app)
+            if !item.3.isEmpty {
+                type(item.3, into: app.descendants(matching: .any)["ingredient.preparation"].firstMatch, in: app)
+            }
+            if index == 1 { hideKeyboard(app); settle(); attach(app, "author-04-ingredient-editor") }
+            app.buttons["ingredient.done"].tap()
+        }
+        hideKeyboard(app)
+        app.swipeDown()
+        settle(); attach(app, "author-05-ingredients")
+
+        let steps: [(String, String, [String], String, String, String)] = [
+            ("Fry the pork belly in the pot over medium heat until the fat renders.", "5",
+             ["pork belly"], "The edges turn golden", "", "No oil. The pork gives you enough."),
+            ("Add the kimchi and its juice and fry it with the pork for 3 minutes.", "3",
+             ["aged kimchi"], "The kimchi softens and smells sweet", "", ""),
+            ("Pour in 3 cups of water, add the tofu and gochugaru, and simmer for 15 minutes.", "15",
+             ["soft tofu", "gochugaru"], "", "Make sure the pork is cooked through before serving.",
+             "Taste it. If the kimchi is very sour, add a pinch of sugar."),
+        ]
+        for (index, step) in steps.enumerated() {
+            let add = app.buttons["draft.addStep"]
+            scrollUntilHittable(add, in: app)
+            add.tap()
+            let instruction = app.descendants(matching: .any)["step.instruction"].firstMatch
+            XCTAssertTrue(instruction.waitForExistence(timeout: 5), "step editor did not open")
+            type(step.0, into: instruction, in: app)
+            let minutes = app.textFields.matching(NSPredicate(format: "placeholderValue == '—'")).firstMatch
+            if minutes.exists { type(step.1, into: minutes, in: app) }
+            hideKeyboard(app)
+            for ingredient in step.2 {
+                let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS 'not used'", ingredient)).firstMatch
+                scrollUntilHittable(row, in: app, maxSwipes: 3)
+                if row.exists { row.tap() }
+            }
+            if index == 0 { settle(); attach(app, "author-06-step-editor") }
+            fillListEntry(app, add: "Add cue", text: step.3)
+            fillListEntry(app, add: "Add warning", text: step.4)
+            if !step.5.isEmpty {
+                let note = app.descendants(matching: .any)["step.creatorNote"].firstMatch
+                scrollUntilHittable(note, in: app)
+                type(step.5, into: note, in: app)
+            }
+            hideKeyboard(app)
+            if index == 2 { settle(); attach(app, "author-07-step-editor-details") }
+            app.buttons["step.done"].tap()
+        }
+        hideKeyboard(app)
+        scrollUntilHittable(app.buttons["draft.addStep"], in: app)
+        settle(); attach(app, "author-08-steps")
+
+        let publish = app.buttons["draft.publish"]
+        XCTAssertTrue(wait(for: publish, enabled: true, timeout: 20), "Publish never became enabled")
+        let preview = app.buttons["draft.preview"]
+        if preview.exists && preview.isHittable {
+            preview.tap()
+            XCTAssertTrue(app.buttons["preview.done"].waitForExistence(timeout: 10), "preview did not open")
+            settle(); attach(app, "author-09-preview")
+            app.swipeUp()
+            settle(); attach(app, "author-09b-preview-steps")
+            app.buttons["preview.done"].tap()
+        }
+
+        XCTAssertTrue(publish.waitForExistence(timeout: 5))
+        publish.tap()
+        XCTAssertTrue(app.buttons["publish.confirm"].waitForExistence(timeout: 5), "no publish confirmation")
+        settle(); attach(app, "author-10-confirm")
+        app.buttons["publish.confirm"].tap()
+        XCTAssertTrue(app.staticTexts["Published version 1"].waitForExistence(timeout: 15), "publish did not succeed")
+        settle(); attach(app, "author-11-published")
+        app.buttons["published.share"].tap()
+        sleep(2); attach(app, "author-12-share-sheet")
+        if app.buttons["Close"].exists { app.buttons["Close"].tap() } else { app.swipeDown() }
+        sleep(1)
+        if app.buttons["published.done"].exists { app.buttons["published.done"].tap() }
+
+        app.tabBars.buttons["Profile"].tap()
+        settle(); attach(app, "author-13-my-recipes")
+
+        searchExplore(app, for: "Kimchi Jjigae")
+        let card = app.staticTexts[title].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 15), "published recipe not found in Explore")
+        hideKeyboard(app)
+        settle(); attach(app, "author-14-explore")
+        card.tap()
+        XCTAssertTrue(app.buttons["recipe.save"].waitForExistence(timeout: 10))
+        settle(); attach(app, "author-15-cook-view")
+        app.swipeUp()
+        settle(); attach(app, "author-16-cook-view-steps")
+    }
+
+    private func settle() { Thread.sleep(forTimeInterval: 1.2) }
+
+    private func hideKeyboard(_ app: XCUIApplication) {
+        guard app.keyboards.firstMatch.exists else { return }
+        let bar = app.navigationBars.firstMatch
+        if bar.exists { bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        if app.keyboards.firstMatch.exists { app.swipeDown() }
+        Thread.sleep(forTimeInterval: 0.5)
+    }
+
+    /// Taps a StringListSection's add button and types into the new (last) row it creates.
+    private func fillListEntry(_ app: XCUIApplication, add label: String, text: String) {
+        guard !text.isEmpty else { return }
+        let button = app.buttons[label].firstMatch
+        scrollUntilHittable(button, in: app)
+        guard button.exists else { return }
+        button.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        let field = app.textFields.allElementsBoundByIndex.last(where: { ($0.value as? String ?? "").isEmpty || $0.value as? String == $0.placeholderValue })
+            ?? app.textViews.allElementsBoundByIndex.last
+        if let field { type(text, into: field, in: app) }
+    }
+
     /// Cooking screen → Ask → "what does this step mean?" → an answer with a step badge → Done.
     private func askCoach(_ app: XCUIApplication) {
         // Repeat / Slower / Ask / Look live in the tools menu (brief 013 Part C).
