@@ -823,6 +823,7 @@ class CookingSession(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("step_index >= 0", name="step_index_non_negative"),
         CheckConstraint("revision >= 0", name="revision_non_negative"),
+        CheckConstraint("servings IS NULL OR servings >= 1", name="servings_positive"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -832,6 +833,9 @@ class CookingSession(TimestampMixin, Base):
     recipe_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("recipe_versions.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    # Brief 020: the servings this session cooks for. Set once at creation and never changed
+    # (no command touches it). Null means the pinned version's own servings.
+    servings: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[SessionStatus] = mapped_column(
         _enum(SessionStatus, "session_status"), nullable=False, default=SessionStatus.CREATED
     )

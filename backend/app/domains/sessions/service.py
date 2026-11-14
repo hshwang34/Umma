@@ -50,6 +50,7 @@ from app.db.models import (
 from app.domains import usage
 from app.domains.matching.dictionary import IngredientDictionary, load_dictionary
 from app.domains.matching.normalize import conjuncts
+from app.domains.matching.service import resolve_servings
 from app.domains.pantry.service import lock_user
 from app.domains.recipes import service as recipes_service
 from app.domains.recipes.versions import version_meta
@@ -160,7 +161,15 @@ async def build_view(
     if "updated_at" in inspect(row).unloaded:  # server onupdate expired it on flush
         await session.refresh(row, ["updated_at"])
     version, recipe = await _pinned(session, row)
-    ctx = context_from(version, recipe)
+    ctx = context_from(version, recipe, row.servings)
+    servings = row.servings if row.servings is not None else version.servings
+    amounts_scaled = servings != version.servings
+    detail = recipes_service.to_detail(
+        recipe, version, saved=None, share_url_base=settings_share_base
+    )
+    if amounts_scaled:
+        # The cook's view only: the pinned version is never touched.
+        detail = detail.model_copy(update={"ingredients": ctx.ingredients})
     adaptations = await active_adaptations(session, row.id)
     prof = await preferences.profile_for(session, row.owner_user_id)
     dictionary = await load_dictionary(session) if adaptations else IngredientDictionary()
@@ -201,9 +210,10 @@ async def build_view(
         step_index=row.step_index,
         steps_count=len(ctx.steps),
         revision=row.revision,
-        recipe=recipes_service.to_detail(
-            recipe, version, saved=None, share_url_base=settings_share_base
-        ),
+        servings=servings,
+        original_servings=version.servings,
+        amounts_scaled=amounts_scaled,
+        recipe=detail,
         adaptations=[
             _adaptation_out(a, _conflicting(a.replacement, a.ratio_or_amount, prof, dictionary))
             for a in adaptations
@@ -387,6 +397,12 @@ async def create(
 ) -> SessionOut:
     now = _now()
     ctx = await version_context(session, user, body.recipe_version_id)
+    original_servings = await session.scalar(
+        select(RecipeVersion.servings).where(RecipeVersion.id == ctx.version_id)
+    )
+    assert original_servings is not None
+    if body.servings is not None:
+        resolve_servings(body.servings, original_servings)  # 422 unless it is a dial stop
     await lock_user(session, user.id, "sessions")
     open_ids = list(
         (
@@ -438,6 +454,7 @@ async def create(
     row = CookingSession(
         owner_user_id=user.id,
         recipe_version_id=ctx.version_id,
+        servings=body.servings,
         status=SessionStatus.CREATED,
         step_index=0,
         revision=0,
@@ -465,6 +482,7 @@ async def create(
             payload_json={
                 "recipe_version_id": str(ctx.version_id),
                 "adaptations": [str(a.id) for a in rows],
+                "servings": body.servings,
             },
             created_at=now,
         )

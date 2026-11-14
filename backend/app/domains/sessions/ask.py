@@ -1,9 +1,10 @@
 """``POST /sessions/{id}/ask`` (COOK-03/04, PRD §8.5, Appendix A, brief 005 contract).
 
-* The grounding packet holds only what §8.5 allows: the pinned version's title, servings and
-  original ingredient amounts, the current step ± 1, creator notes and warnings, approved
-  adaptations, the session's relevant pantry subset, the last 10 turns, running timers and the
-  caller's food preferences.
+* The grounding packet holds only what §8.5 allows: the pinned version's title, the session's
+  servings and the ingredient amounts for them (brief 020; the creator's own when the session
+  is not scaled), the current step ± 1, creator notes and warnings, approved adaptations, the
+  session's relevant pantry subset, the last 10 turns, running timers and the caller's food
+  preferences.
 * Recipe text, notes and the query are untrusted data. The coach never changes state; its
   ``proposed_action`` is kept only when the user's own query asked for it and it is legal right
   now, and it always ``requires_confirmation``.
@@ -178,7 +179,7 @@ async def ask(
     )
 
     version, recipe = await service._pinned(session, row)
-    ctx = context_from(version, recipe)
+    ctx = context_from(version, recipe, row.servings)
     overlay = (row.adaptation_json or {}).get("steps", {})
     steps = ctx.steps
     idx = min(row.step_index, max(len(steps) - 1, 0))
@@ -212,7 +213,7 @@ async def ask(
         recipe_version_id=str(ctx.version_id),
         version_number=version.version_number,
         title=ctx.title,
-        servings=version.servings,
+        servings=row.servings if row.servings is not None else version.servings,
         ingredients=[" ".join(filter(None, [_amount(i), i.name])) for i in ctx.ingredients],
         ingredient_items=[
             IngredientSummary(id=i.id, name=i.name, amount=_amount(i)) for i in ctx.ingredients
