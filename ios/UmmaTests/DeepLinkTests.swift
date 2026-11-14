@@ -7,22 +7,24 @@ final class DeepLinkTests: XCTestCase {
 
     func testParsesCustomSchemeAndUniversalLink() throws {
         XCTAssertEqual(DeepLink.parse(URL(string: "umma://recipe/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")!), .recipe(id))
-        XCTAssertEqual(DeepLink.parse(URL(string: "https://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")!), .recipe(id))
-        XCTAssertEqual(DeepLink.parse(URL(string: "https://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d/")!), .recipe(id))
-        XCTAssertNil(DeepLink.parse(URL(string: "https://www.umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")!),
+        XCTAssertEqual(DeepLink.parse(URL(string: "https://ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")!), .recipe(id))
+        XCTAssertEqual(DeepLink.parse(URL(string: "https://ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d/")!), .recipe(id))
+        XCTAssertNil(DeepLink.parse(URL(string: "https://www.ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")!),
                      "only the host in the associated-domains entitlement")
         XCTAssertEqual(DeepLink.parse(URL(string: "UMMA://recipe/A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D")!), .recipe(id), "scheme and UUID are case-insensitive")
-        XCTAssertEqual(DeepLink.parse(URL(string: "https://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d?utm=share")!), .recipe(id), "query is ignored")
+        XCTAssertEqual(DeepLink.parse(URL(string: "https://ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d?utm=share")!), .recipe(id), "query is ignored")
     }
 
     func testRejectsEverythingElse() {
         for raw in [
-            "https://umma.app/recipes/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-            "https://umma.app/r/not-a-uuid",
-            "https://umma.app/r/",
-            "https://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d/extra",
+            "https://ummacooks.app/recipes/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            "https://ummacooks.app/r/not-a-uuid",
+            "https://ummacooks.app/r/",
+            "https://ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d/extra",
             "https://evil.example/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-            "http://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            "http://ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            // The old stub host was never ours.
+            "https://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
             "umma://pantry/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
             "umma://recipe/",
             "umma://recipe/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d/steps",
@@ -33,7 +35,7 @@ final class DeepLinkTests: XCTestCase {
     }
 
     func testShareLinkBuildersRoundTripThroughParser() {
-        XCTAssertEqual(ShareLinks.universal(recipeId: id).absoluteString, "https://umma.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
+        XCTAssertEqual(ShareLinks.universal(recipeId: id).absoluteString, "https://ummacooks.app/r/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
         XCTAssertEqual(ShareLinks.custom(recipeId: id).absoluteString, "umma://recipe/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
         XCTAssertEqual(DeepLink.parse(ShareLinks.universal(recipeId: id)), .recipe(id))
         XCTAssertEqual(DeepLink.parse(ShareLinks.custom(recipeId: id)), .recipe(id))

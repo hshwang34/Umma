@@ -20,7 +20,7 @@ final class RecipeDetailViewModelTests: XCTestCase {
         XCTAssertTrue(model.isSaved)
         XCTAssertEqual(model.title, "Garlic Pasta")
         XCTAssertEqual(model.versionNumber, 2)
-        XCTAssertEqual(model.shareURL.absoluteString, "https://umma.app/r/\(AuthoringFixtures.recipeId)")
+        XCTAssertEqual(model.shareURL.absoluteString, "https://ummacooks.app/r/\(AuthoringFixtures.recipeId)")
     }
 
     func testCardSeedsHeaderAndSavedBeforeLoad() throws {

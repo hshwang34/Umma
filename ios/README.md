@@ -63,7 +63,7 @@ cues and warnings.
   if the idempotent POST/DELETE fails. The **Saved** tab is `GET /v1/me/saved` and refreshes
   whenever a save changes anywhere in the app.
 - **Share / deep links:** `umma://recipe/{id}` (registered in `CFBundleURLTypes`) and
-  `https://umma.app/r/{id}` (exact host only; associated-domains entry is a stub, the domain is not live) both
+  `https://ummacooks.app/r/{id}` (exact host only, the associated-domains entry) both
   open the recipe on the Explore stack from any tab. A link that arrives while signed out is
   applied after sign-in. Try it: `xcrun simctl openurl booted umma://recipe/<recipe-id>`.
 - Search placeholder is "Search recipes or ingredients" (the backend matches title or ingredient).
@@ -278,7 +278,7 @@ Releasing is `make release-ios`; see `docs/release/testflight.md`.
 ```
 Umma/
   App/            UmmaApp, AppEnvironment (composition root), RootView (sign-in vs tabs)
-  App/DeepLink    umma:// and umma.app/r/{id} parsing (`DeepLink`, `ShareLinks`)
+  App/DeepLink    umma:// and ummacooks.app/r/{id} parsing (`DeepLink`, `ShareLinks`)
   Features/       Explore, Recipe (detail, pantry fit, swap sheet), Cooking (cooking screen,
                   assistant drawer, session end, resume banner/pill), Creator (draft editor, ingredient/step
                   editors, publish confirmation, preview), Saved, Pantry, Profile (my recipes,

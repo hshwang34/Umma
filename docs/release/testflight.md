@@ -27,7 +27,7 @@ developer.apple.com → Certificates, Identifiers & Profiles → Identifiers →
 - [ ] The App ID exists on team `V56DG94ZL5`. (The first signed archive with
       `-allowProvisioningUpdates` registers it if it does not.)
 - [ ] **Sign in with Apple** is ticked, as a primary App ID.
-- [ ] **Associated Domains** is ticked (the app declares `applinks:umma.app`).
+- [ ] **Associated Domains** is ticked (the app declares `applinks:ummacooks.app`).
 - [ ] Keychain sharing needs no tick; it is an entitlement only.
 
 ### 2. Developer portal: Sign in with Apple key

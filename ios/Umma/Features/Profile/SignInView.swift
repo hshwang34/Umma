@@ -13,10 +13,13 @@ struct SignInView: View {
     @State private var serverStatus: ServerStatus = .checking
     /// The nonce of the Apple request in flight; the server checks it against the token.
     @State private var appleNonce: SignInNonce?
+    // Review access (brief 010): the field appears after tapping "Have a review code?".
+    @State private var showsReviewCode = false
+    @State private var reviewCode = ""
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var focus: Field?
 
-    private enum Field { case email, code }
+    private enum Field { case email, code, review }
 
     private enum ServerStatus: Equatable {
         case checking
@@ -120,9 +123,74 @@ struct SignInView: View {
                 .accessibilityIdentifier("signin.google")
             }
 
+            reviewAccess
+
             #if !DEBUG
             inlineError
             #endif
+        }
+    }
+
+    // MARK: - Review access
+
+    @ViewBuilder
+    private var reviewAccess: some View {
+        if showsReviewCode {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                SecureField(ReviewSignIn.fieldLabel, text: $reviewCode)
+                    .textContentType(.oneTimeCode)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .focused($focus, equals: .review)
+                    .onSubmit { signInWithReviewCode() }
+                    .modifier(SignInFieldStyle(isError: false))
+                    .accessibilityLabel(ReviewSignIn.fieldLabel)
+                    .accessibilityIdentifier("signin.review.code")
+                Button {
+                    signInWithReviewCode()
+                } label: {
+                    if isSubmitting {
+                        ProgressView().tint(SLColor.onBrand)
+                    } else {
+                        Text(ReviewSignIn.submitTitle)
+                    }
+                }
+                .buttonStyle(SLButtonStyle(prominent: true))
+                .disabled(!ReviewSignIn.canSubmit(reviewCode) || isSubmitting)
+                .slDisabledAppearance(!ReviewSignIn.canSubmit(reviewCode))
+                .accessibilityIdentifier("signin.review.submit")
+                Button(ReviewSignIn.cancelTitle) {
+                    showsReviewCode = false
+                    reviewCode = ""
+                    errorMessage = nil
+                }
+                .font(SLFont.bodyEmphasis)
+                .frame(maxWidth: .infinity, minHeight: Metrics.minTapTarget)
+            }
+            .onAppear { focus = .review }
+        } else {
+            Button(ReviewSignIn.linkTitle) {
+                errorMessage = nil
+                showsReviewCode = true
+            }
+            .font(SLFont.footnote)
+            .foregroundStyle(SLColor.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: Metrics.minTapTarget)
+            .accessibilityIdentifier("signin.review.link")
+        }
+    }
+
+    private func signInWithReviewCode() {
+        guard ReviewSignIn.canSubmit(reviewCode), !isSubmitting else { return }
+        let code = reviewCode
+        run {
+            do {
+                try await environment.auth.signInWithReviewCode(code)
+                reviewCode = ""
+            } catch {
+                errorMessage = ReviewSignIn.message(for: error)
+            }
         }
     }
 

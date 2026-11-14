@@ -1,17 +1,14 @@
 # Beta App Review notes (draft, brief 010)
 
 Paste the "Notes for the reviewer" section into App Store Connect → TestFlight → Test
-Information → Beta App Review Information → Review Notes. Fill in the two bracketed values at
-that moment; they are never written in this repo.
+Information → Beta App Review Information → Review Notes. Fill in the bracketed review code at
+that moment; it is never written in this repo.
 
 ## Before pasting: what the PM fills in
 
 - **[REVIEW CODE]**: the review login secret. It exists only as a secret on the hosted
   backend (see `docs/release/backend.md`). Copy it from there into App Store Connect's review
   notes field. Do not put it in this file, a commit, a PR or a chat.
-- **[HOW TO ENTER IT]**: the exact taps to reach the review login in the build being
-  submitted. See "Open item" below: the app-side entry for the review login is not in this
-  build series yet, so this line cannot be written until it is.
 - Contact: first and last name, phone, jacogoby@gmail.com.
 - "Sign-in required": yes.
 
@@ -35,7 +32,8 @@ with the ingredients they actually have.
 
 - Testers sign in with "Sign in with Apple" (first button) or "Sign in with Google".
 - For review, a dedicated review account is available without an Apple or Google account:
-  [HOW TO ENTER IT]. Review code: [REVIEW CODE].
+  on the sign-in screen tap "Have a review code?" below the sign-in buttons, enter the code
+  and tap "Sign in". Review code: [REVIEW CODE].
 - The review account has its own sample data and cannot affect other people's data.
 
 **What to try (about 5 minutes, iPhone only, no accessories needed)**
@@ -71,13 +69,13 @@ with the ingredients they actually have.
 - Support and privacy contact: jacogoby@gmail.com. Privacy policy:
   https://ummacooks.app/privacy.html
 
-## Open item
+## In the app
 
-The iOS app has no screen for the review login yet (brief 010's iOS PRs cover Apple, Google,
-delete account, release config and error states). Until an entry point exists, a reviewer
-cannot use the review code. Options:
-
-- A) Add a small "Have a review code?" link under the sign-in buttons in release builds
-  (recommended: Apple expects a working demo login when sign-in is required).
-- B) Give the reviewer a real Apple ID or Google test account in the notes instead and keep the
-  review login server-only.
+- Sign-in screen → "Have a review code?" (below Sign in with Apple and Google, in every build)
+  → one field → "Sign in". The app sends `POST /v1/auth/review` with `{"code": "<text>"}` and
+  gets the usual sign-in response.
+- What the reviewer sees if it fails: a wrong code, "That code didn’t work."; too many tries,
+  "Too many tries. Wait a minute and try again."; a server without a review login, "Review
+  sign-in isn’t available right now."
+- The app never stores or logs the code, and a failed attempt never signs anyone out.
+- Before submitting, try the code once on the TestFlight build against production.

@@ -214,7 +214,7 @@ final class LiveScanViewModel {
             guard gate.isCurrent(run) else { return }
             // A transport error has no user copy of its own.
             let text = error is LiveScanError ? Self.connectFailedMessage : error.pantryMessage
-            if case CaptureError.permissionDenied = error { permissionDenied = true }
+            if error.isPermissionDenied { permissionDenied = true }
             await stop(Self.isLimit(error) ? .limitReached : .failed, text)
         }
     }

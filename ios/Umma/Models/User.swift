@@ -122,6 +122,11 @@ struct GoogleSignInRequest: Encodable, Sendable {
     let nonce: String
 }
 
+/// `POST /v1/auth/review` (brief 010): the review code and nothing else.
+struct ReviewSignInRequest: Encodable, Sendable {
+    let code: String
+}
+
 struct AuthResponse: Decodable, Sendable {
     let accessToken: String
     let tokenType: String

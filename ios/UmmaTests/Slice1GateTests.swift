@@ -206,27 +206,27 @@ final class Slice1GateTests: XCTestCase {
     func testDeepLinkEdgeCases() {
         let id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
         for raw in [
-            "https://umma.app.evil.com/r/\(id)",
-            "https://evilumma.app/r/\(id)",
-            "https://sub.umma.app/r/\(id)",
-            "https://umma.app/R/\(id)",
-            "https://umma.app/r/\(id)/",       // accepted below, kept out of this list
-            "https://umma.app/r/\(id)x",
-            "https://umma.app/r/{\(id)}",
+            "https://ummacooks.app.evil.com/r/\(id)",
+            "https://evilummacooks.app/r/\(id)",
+            "https://sub.ummacooks.app/r/\(id)",
+            "https://ummacooks.app/R/\(id)",
+            "https://ummacooks.app/r/\(id)/",       // accepted below, kept out of this list
+            "https://ummacooks.app/r/\(id)x",
+            "https://ummacooks.app/r/{\(id)}",
             "umma:///recipe/\(id)",
             "umma://recipe/\(id)/",             // accepted below
             "umma://recipe/\(id)x",
             "umma://recipe/12345",
             "umma://recipes/\(id)",
-            "ftp://umma.app/r/\(id)",
-            "umma.app/r/\(id)",
+            "ftp://ummacooks.app/r/\(id)",
+            "ummacooks.app/r/\(id)",
         ] where !raw.hasSuffix("/\(id)/") {
             XCTAssertNil(DeepLink.parse(URL(string: raw)!), raw)
         }
         XCTAssertNotNil(DeepLink.parse(URL(string: "umma://recipe/\(id)/")!))
-        XCTAssertNotNil(DeepLink.parse(URL(string: "HTTPS://UMMA.APP/r/\(id)")!))
+        XCTAssertNotNil(DeepLink.parse(URL(string: "HTTPS://UMMACOOKS.APP/r/\(id)")!))
         XCTAssertNotNil(DeepLink.parse(URL(string: "umma://RECIPE/\(id)")!))
-        XCTAssertNotNil(DeepLink.parse(URL(string: "https://umma.app/r/\(id)#frag")!))
+        XCTAssertNotNil(DeepLink.parse(URL(string: "https://ummacooks.app/r/\(id)#frag")!))
     }
 
     func testLatestSignedOutLinkWinsAndNothingNavigatesBeforeSignIn() async {

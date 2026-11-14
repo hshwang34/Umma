@@ -344,6 +344,7 @@ final class HeldDeleteAuthService: AuthService, @unchecked Sendable {
     func verifyDevCode(challengeId: String, code: String) async throws -> AuthResponse { try login() }
     func signInWithApple(identityToken: String, nonce: String, authorizationCode: String?, displayName: String?) async throws -> AuthResponse { try login() }
     func signInWithGoogle(idToken: String, nonce: String) async throws -> AuthResponse { try login() }
+    func signInWithReviewCode(_ code: String) async throws -> AuthResponse { try login() }
     func me() async throws -> User { try login().user }
 
     func deleteAccount() async throws {

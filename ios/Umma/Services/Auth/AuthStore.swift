@@ -144,6 +144,13 @@ final class AuthStore {
         try startSession(response)
     }
 
+    /// Review access (brief 010). A refused code throws and leaves the store signed out; no
+    /// session exists to tear down. The code is passed on and never kept.
+    func signInWithReviewCode(_ code: String) async throws {
+        let response = try await api.signInWithReviewCode(ReviewSignIn.normalized(code))
+        try startSession(response)
+    }
+
     private func startSession(_ response: AuthResponse) throws {
         if cachedUser()?.id != response.user.id {
             // A different account: nothing of the previous one's may survive.
