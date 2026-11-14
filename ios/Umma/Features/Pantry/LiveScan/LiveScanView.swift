@@ -212,7 +212,7 @@ struct LiveScanView: View {
             .foregroundStyle(SLColor.textPrimary)
             .accessibilityIdentifier("liveScan.basketCount")
             if model.basket.isEmpty {
-                Text("Nothing yet. Items appear here as Umma recognises them.")
+                Text("Nothing yet. Items appear here as Umma recognizes them.")
                     .font(SLFont.footnote)
                     .foregroundStyle(SLColor.textSecondary)
             } else {

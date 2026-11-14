@@ -36,7 +36,7 @@ struct LiveScanScreenPresentation: Equatable {
             title = "Starting the camera…"
         case .scanning:
             title = "Point at your ingredients"
-            text = message ?? "Move slowly across the fridge or a shelf. Each thing Umma recognises drops into your basket."
+            text = message ?? "Move slowly across the fridge or a shelf. Each thing Umma recognizes drops into your basket."
         case .timeUp:
             title = "Two minutes are up"
             text = message ?? "The camera is off. Keep scanning, or tap Done to check your list."

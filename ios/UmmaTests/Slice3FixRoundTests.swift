@@ -332,7 +332,7 @@ final class Slice3FixRoundTests: XCTestCase {
         model.allergyDraft = "zorbleberry"
         await model.add(.allergies)
         XCTAssertEqual(model.unrecognizedEntries(.allergies), ["zorbleberry"])
-        XCTAssertTrue(PreferencesViewModel.unrecognizedMessage("zorbleberry").hasPrefix("We don’t recognise “zorbleberry”, so swaps can’t check for it"))
+        XCTAssertTrue(PreferencesViewModel.unrecognizedMessage("zorbleberry").hasPrefix("Umma doesn’t recognize “zorbleberry”, so it can’t check swaps for it"))
         await model.remove(.allergies, at: 2)
         XCTAssertTrue(model.unrecognizedEntries(.allergies).isEmpty)
         let decoded = try CookingFixtures.decode(FoodPreferences.self, #"{"allergies":["x"],"avoid":[],"updated_at":null,"unrecognized":["x"]}"#)

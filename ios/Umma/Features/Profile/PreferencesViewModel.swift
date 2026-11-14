@@ -77,7 +77,7 @@ final class PreferencesViewModel {
     }
 
     static func unrecognizedMessage(_ entry: String) -> String {
-        "We don’t recognise “\(entry)”, so swaps can’t check for it — try a simpler word (e.g. peanut, shellfish, milk)."
+        "Umma doesn’t recognize “\(entry)”, so it can’t check swaps for it. Try a simpler word, like peanut, shellfish or milk."
     }
 
     func draft(_ kind: Kind) -> String {

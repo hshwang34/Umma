@@ -148,7 +148,7 @@ struct CaptureResumeRow: View {
 
     private var subtitle: String {
         let lines = "\(record.lines.count) line\(record.lines.count == 1 ? "" : "s") heard"
-        if record.discardPending == true { return "Discard pending: couldn’t reach Umma yet. Tap to try again." }
+        if record.discardPending == true { return "Not deleted yet. Tap to try again." }
         switch record.stage {
         case .recording: return "Not finished · \(lines). Tap to continue."
         case .wrappingUp, .generating: return "Recorded · \(lines). Tap to make the recipe."

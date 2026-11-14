@@ -28,7 +28,7 @@ struct ScanReviewView: View {
 
             Section {
                 if model.rows.isEmpty {
-                    Text("Nothing recognisable was found. Try again, or add items by hand.")
+                    Text("Umma didn’t find any food in that. Try again, or add items by hand.")
                         .font(SLFont.callout)
                         .foregroundStyle(SLColor.textSecondary)
                 }

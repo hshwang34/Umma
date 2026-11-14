@@ -110,7 +110,7 @@ final class AccountDeletionTests: XCTestCase {
         await settle()
 
         XCTAssertEqual(h.auth.state, .signedOut)
-        XCTAssertEqual(h.auth.banner, "Your session ended. Please sign in again.")
+        XCTAssertEqual(h.auth.banner, "You’ve been signed out. Sign in again to continue.")
         XCTAssertNil(h.auth.notice, "nothing claims the account was deleted")
         XCTAssertNil(h.model.errorMessage)
     }

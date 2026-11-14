@@ -16,7 +16,7 @@ final class CaptureScreensTests: XCTestCase {
         let camera = options[1]
         XCTAssertFalse(camera.isEnabled)
         XCTAssertEqual(camera.badge, "Coming soon")
-        XCTAssertTrue(camera.detail.hasPrefix("Planned"))
+        XCTAssertTrue(camera.detail.hasPrefix("Coming later"))
         XCTAssertTrue(camera.accessibilityLabel.contains("Coming soon"))
         XCTAssertTrue(options[0].isEnabled && options[2].isEnabled)
     }

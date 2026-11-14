@@ -20,6 +20,6 @@ final class CaptureFlowViewTests: XCTestCase {
         record.stage = .wrappingUp
         XCTAssertEqual(CaptureResumeRow(record: record) {}.subtitleForTests, "Recorded · 1 line heard. Tap to make the recipe.")
         record.discardPending = true
-        XCTAssertTrue(CaptureResumeRow(record: record) {}.subtitleForTests.hasPrefix("Discard pending"))
+        XCTAssertTrue(CaptureResumeRow(record: record) {}.subtitleForTests.hasPrefix("Not deleted yet"))
     }
 }

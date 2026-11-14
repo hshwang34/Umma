@@ -92,7 +92,7 @@ final class AuthStore {
         } catch let error as APIError {
             switch error {
             case .unauthorized:
-                forceSignOut(reason: "Your session ended. Please sign in again.")
+                forceSignOut(reason: "You’ve been signed out. Sign in again to continue.")
             default:
                 if case .signedIn = state {
                     logger.info("restore: kept cached user; refresh failed: \(error.userMessage, privacy: .public)")
@@ -193,7 +193,7 @@ final class AuthStore {
     /// session that is already gone and must not end the current one.
     func handleUnauthorized(_ event: UnauthorizedEvent) {
         guard isSignedIn, event.generation == generation.current() else { return }
-        forceSignOut(reason: "Your session ended. Please sign in again.")
+        forceSignOut(reason: "You’ve been signed out. Sign in again to continue.")
     }
 
     /// The server address changed: every credential belonged to the old server, so drop them all
