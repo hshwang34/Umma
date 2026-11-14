@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from typing import Any
 
 from sqlalchemy import delete, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
@@ -36,6 +37,7 @@ from app.domains.recipes.schemas import (
     SaveStatus,
 )
 from app.domains.recipes.versions import served_meta
+from app.domains.users.deletion import is_former_creator
 
 MAX_PAGE_SIZE = 100
 
@@ -88,6 +90,22 @@ def to_card(recipe: Recipe, *, saved: bool | None) -> RecipeCard:
     )
 
 
+_CLIP_FIELDS = ("source_clip_id", "source_start_ms", "source_end_ms")
+
+
+def _served_steps(recipe: Recipe, version: RecipeVersion) -> list[Any]:
+    """The version's steps as served. A recipe kept after its creator deleted their account
+    (brief 010) has no media left, so its steps are served without their clip references;
+    the stored version is immutable and is not touched."""
+    steps = version.step_json or []
+    if not is_former_creator(recipe.owner):
+        return steps
+    return [
+        {k: v for k, v in step.items() if k not in _CLIP_FIELDS} if isinstance(step, dict) else step
+        for step in steps
+    ]
+
+
 def to_detail(
     recipe: Recipe, version: RecipeVersion, *, saved: bool | None, share_url_base: str
 ) -> RecipeDetail:
@@ -98,7 +116,7 @@ def to_detail(
         prep_minutes=version.prep_minutes,
         cook_minutes=version.cook_minutes,
         ingredients=version.ingredient_json,
-        steps=version.step_json,
+        steps=_served_steps(recipe, version),
         creator_notes=warnings.get("creator_notes", []),
         dietary_warnings=warnings.get("dietary_warnings", []),
     )

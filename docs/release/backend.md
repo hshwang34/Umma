@@ -218,9 +218,15 @@ sessions, drafts, recordings' transcripts, recipes, and every video, clip and co
 (the worker removes the files from Tigris within seconds; check with
 `fly logs --process-group worker`).
 
-- Recipes that another person has cooked, saved or adapted are kept without their media under
-  an anonymous account named "Former Umma cook", so other people's sessions and saved lists
-  keep working. All other recipes are deleted.
+- Recipes that another person has cooked, saved or adapted (or holds a substitution
+  suggestion for) are kept without their media under an anonymous account named "Former Umma
+  cook", so other people's sessions and saved lists keep working. All other recipes are
+  deleted. A kept recipe is served without its step clips and without the creator's own cover
+  link (the stock photo stays). The recipe's text is unchanged: anything the creator typed
+  into the title, notes or steps, including a name, is still shown.
+- If someone starts cooking one of the person's recipes at the very moment of deletion, the
+  deletion re-checks and keeps that recipe. If it still cannot finish, nothing is deleted and
+  the app gets 409 `ACCOUNT_DELETION_BUSY` (retryable); trying again works.
 - AI spend rows stay, with the person removed, so deleting an account never refunds the
   monthly budget.
 - The Apple token is revoked after the data is gone. The log line `account deleted` carries
