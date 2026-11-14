@@ -286,6 +286,9 @@ class RecipeVersion(CreatedAtMixin, Base):
     cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recipe_media.id", use_alter=True, ondelete="SET NULL")
     )
+    cover_media: Mapped[RecipeMedia | None] = relationship(
+        foreign_keys=[cover_media_id], lazy="joined"
+    )
 
 
 class RecipeMedia(CreatedAtMixin, Base):
