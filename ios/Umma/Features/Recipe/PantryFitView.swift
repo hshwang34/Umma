@@ -102,6 +102,22 @@ struct PantryFitView: View {
                 header(model)
                     .listRowBackground(Color.clear)
             }
+            if let card = model.keyIngredient {
+                Section {
+                    KeyIngredientCardView(
+                        card: card,
+                        isBusy: card.pantryItemId.map(model.busyItemIds.contains) ?? false,
+                        onStillHave: {
+                            if let id = card.pantryItemId { Task { await model.confirmStillHave(pantryItemId: id) } }
+                        },
+                        onDontHave: { Task { await model.removeKeyIngredient() } },
+                        onFindSwap: { swapSheet = SwapTarget(ingredientRef: card.ingredientRef, name: card.name) },
+                        onAdd: {
+                            editor = PantryItemEditorModel(mode: .add, form: PantryItemForm(name: card.name), service: environment.api)
+                        }
+                    )
+                }
+            }
             if let error = model.actionError {
                 Section {
                     Text(error).font(SLFont.footnote).foregroundStyle(SLColor.danger)
@@ -251,6 +267,71 @@ struct PantryFitView: View {
         case .missing: return SLColor.danger
         case .optional: return SLColor.textSecondary
         }
+    }
+}
+
+/// Brief 017: the main ingredient and its two answers. Each button is one explicit tap.
+private struct KeyIngredientCardView: View {
+    let card: KeyIngredientCard
+    let isBusy: Bool
+    let onStillHave: () -> Void
+    let onDontHave: () -> Void
+    let onFindSwap: () -> Void
+    let onAdd: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(card.title)
+                    .font(SLFont.title3)
+                    .foregroundStyle(SLColor.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text(card.detail)
+                    .font(SLFont.callout)
+                    .foregroundStyle(SLColor.textSecondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("fit.key.title")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.sm) { buttons }
+                VStack(alignment: .leading, spacing: Spacing.sm) { buttons }
+            }
+        }
+        .padding(.vertical, Spacing.xs)
+        .opacity(isBusy ? 0.5 : 1)
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        Group {
+            switch card.state {
+            case .ask:
+                Button(KeyIngredientCard.stillHaveTitle, action: onStillHave)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("fit.key.stillHave")
+                Button(KeyIngredientCard.dontHaveTitle, action: onDontHave)
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Removes \(card.name) from your pantry")
+                    .accessibilityIdentifier("fit.key.dontHave")
+            case .seenToday:
+                Button(KeyIngredientCard.dontHaveTitle, action: onDontHave)
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Removes \(card.name) from your pantry")
+                    .accessibilityIdentifier("fit.key.dontHave")
+            case .notInPantry:
+                if card.canFindSwap {
+                    Button("Find a swap", action: onFindSwap)
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("fit.key.findSwap")
+                }
+                Button("Add to pantry", action: onAdd)
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("fit.key.add")
+            }
+        }
+        .tint(SLColor.accent)
+        .frame(minHeight: Metrics.minTapTarget)
+        .disabled(isBusy)
     }
 }
 

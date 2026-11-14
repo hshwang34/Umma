@@ -393,6 +393,10 @@ struct FitItem: Codable, Sendable, Hashable, Identifiable {
     let pantryItemId: UUID?
     let pantryQuantity: FitQuantity?
     let conversionNote: String?
+    /// Brief 017: the dish's main ingredient (at most one per fit). Absent from older servers.
+    var isKey: Bool? = nil
+    /// When the matched pantry item was last confirmed; nil when nothing matched.
+    var lastConfirmedAt: Date? = nil
 
     var id: String { ingredientRef }
 }

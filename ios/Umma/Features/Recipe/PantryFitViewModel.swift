@@ -93,6 +93,63 @@ struct FitRowPresentation: Identifiable, Equatable {
     }
 }
 
+/// The key-ingredient card at the top of Pantry fit (brief 017): the dish's main ingredient and
+/// when Umma last saw it. Both answers are the cook's tap; nothing is removed without one.
+struct KeyIngredientCard: Equatable {
+    enum State: Equatable {
+        /// In the pantry: "Still have it" / "I don’t have that".
+        case ask
+        /// Confirmed today: nothing to ask, but it can still be taken out.
+        case seenToday
+        /// Not in the pantry (never added, or just removed here).
+        case notInPantry
+    }
+
+    let ingredientRef: String
+    let name: String
+    let pantryItemId: UUID?
+    let state: State
+    let title: String
+    let detail: String
+    let canFindSwap: Bool
+
+    init?(fit: PantryFit, now: Date, swapsEnabled: Bool, justRemoved: Bool = false) {
+        guard let item = fit.items.first(where: { $0.isKey == true }) else { return nil }
+        ingredientRef = item.ingredientRef
+        name = item.name
+        pantryItemId = item.pantryItemId
+        let shown = item.name.lowercased()
+        if let seen = item.lastConfirmedAt, item.pantryItemId != nil {
+            let days = PantryFreshness.days(since: seen, now: now)
+            state = days == 0 ? .seenToday : .ask
+            title = days == 0 ? "You have \(shown)" : "Do you still have \(shown)?"
+            detail = "The main ingredient of this dish. \(Self.lastSeen(days))."
+            canFindSwap = false
+        } else if item.pantryItemId != nil {
+            state = .ask
+            title = "Do you still have \(shown)?"
+            detail = "The main ingredient of this dish."
+            canFindSwap = false
+        } else {
+            state = .notInPantry
+            title = justRemoved ? "Removed \(shown) from your pantry" : "No \(shown) in your pantry"
+            detail = "It’s the main ingredient of this dish. You can look for a swap, or add it if you have some."
+            canFindSwap = swapsEnabled
+        }
+    }
+
+    static func lastSeen(_ days: Int) -> String {
+        switch days {
+        case 0: return "Last seen today"
+        case 1: return "Last seen yesterday"
+        default: return "Last seen \(days) days ago"
+        }
+    }
+
+    static let stillHaveTitle = "Still have it"
+    static let dontHaveTitle = "I don’t have that"
+}
+
 struct FitSection: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
         case available, uncertain, missing, optional
@@ -263,6 +320,36 @@ final class PantryFitViewModel {
             FitSection(kind: .optional, rows: rows { $0.optional || $0.status == .optionalMissing }),
         ]
         return all.filter { !$0.rows.isEmpty }
+    }
+
+    /// Brief 017: the main ingredient, first on the screen. Nil when the server names none.
+    var keyIngredient: KeyIngredientCard? {
+        guard let fit else { return nil }
+        return KeyIngredientCard(fit: fit, now: now(), swapsEnabled: cooking != nil,
+                                 justRemoved: removedKeyRef != nil)
+    }
+
+    /// The key ingredient the cook just said they don't have, so the card can say what happened.
+    private var removedKeyRef: String?
+
+    /// "I don’t have that" on the key-ingredient card: the pantry item is deleted on this tap
+    /// and on nothing else. The fit is re-read through the revision bump.
+    func removeKeyIngredient() async {
+        guard let card = keyIngredient, let id = card.pantryItemId, !busyItemIds.contains(id) else { return }
+        busyItemIds.insert(id)
+        actionError = nil
+        defer { busyItemIds.remove(id) }
+        do {
+            try await service.deletePantryItem(id: id)
+            removedKeyRef = card.ingredientRef
+            onPantryChanged?()
+        } catch let error as APIError where error.isNotFound {
+            // Already gone (deleted elsewhere): the answer is the same.
+            removedKeyRef = card.ingredientRef
+            onPantryChanged?()
+        } catch {
+            actionError = "Couldn’t remove \(card.name): \(error.pantryMessage)"
+        }
     }
 
     // MARK: Actions
